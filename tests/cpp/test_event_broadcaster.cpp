@@ -5,21 +5,18 @@
 
 using namespace widgeteer;
 
-class TestEventBroadcaster : public QObject
-{
+class TestEventBroadcaster : public QObject {
   Q_OBJECT
 
 private slots:
-  void testInitialState()
-  {
+  void testInitialState() {
     EventBroadcaster broadcaster;
 
     QVERIFY(!broadcaster.isEnabled());
     QVERIFY(!broadcaster.hasSubscribers("any_event"));
   }
 
-  void testSetEnabled()
-  {
+  void testSetEnabled() {
     EventBroadcaster broadcaster;
 
     broadcaster.setEnabled(true);
@@ -29,8 +26,7 @@ private slots:
     QVERIFY(!broadcaster.isEnabled());
   }
 
-  void testSubscribe()
-  {
+  void testSubscribe() {
     EventBroadcaster broadcaster;
 
     broadcaster.subscribe("client1", "widget_created");
@@ -40,8 +36,7 @@ private slots:
     QCOMPARE(broadcaster.clientSubscriptions("client1"), QStringList{ "widget_created" });
   }
 
-  void testMultipleSubscriptions()
-  {
+  void testMultipleSubscriptions() {
     EventBroadcaster broadcaster;
 
     broadcaster.subscribe("client1", "widget_created");
@@ -61,8 +56,7 @@ private slots:
     QVERIFY(client1Subs.contains("property_changed"));
   }
 
-  void testUnsubscribe()
-  {
+  void testUnsubscribe() {
     EventBroadcaster broadcaster;
 
     broadcaster.subscribe("client1", "widget_created");
@@ -74,8 +68,7 @@ private slots:
     QCOMPARE(broadcaster.clientSubscriptions("client1"), QStringList{ "property_changed" });
   }
 
-  void testUnsubscribeAll()
-  {
+  void testUnsubscribeAll() {
     EventBroadcaster broadcaster;
 
     broadcaster.subscribe("client1", "widget_created");
@@ -90,8 +83,7 @@ private slots:
     QVERIFY(!broadcaster.hasSubscribers("focus_changed"));
   }
 
-  void testRemoveClient()
-  {
+  void testRemoveClient() {
     EventBroadcaster broadcaster;
 
     broadcaster.subscribe("client1", "widget_created");
@@ -101,8 +93,7 @@ private slots:
     QCOMPARE(broadcaster.clientSubscriptions("client1").size(), 0);
   }
 
-  void testUnsubscribeNonExistentClient()
-  {
+  void testUnsubscribeNonExistentClient() {
     EventBroadcaster broadcaster;
 
     // Should not crash
@@ -111,8 +102,7 @@ private slots:
     broadcaster.removeClient("nonexistent");
   }
 
-  void testEmitEventWhenDisabled()
-  {
+  void testEmitEventWhenDisabled() {
     EventBroadcaster broadcaster;
     QSignalSpy spy(&broadcaster, &EventBroadcaster::eventReady);
 
@@ -124,8 +114,7 @@ private slots:
     QCOMPARE(spy.count(), 0);  // No event emitted when disabled
   }
 
-  void testEmitEventWhenEnabled()
-  {
+  void testEmitEventWhenEnabled() {
     EventBroadcaster broadcaster;
     QSignalSpy spy(&broadcaster, &EventBroadcaster::eventReady);
 
@@ -142,8 +131,7 @@ private slots:
     QCOMPARE(args.at(2).toStringList(), QStringList{ "client1" });
   }
 
-  void testEmitEventNoSubscribers()
-  {
+  void testEmitEventNoSubscribers() {
     EventBroadcaster broadcaster;
     QSignalSpy spy(&broadcaster, &EventBroadcaster::eventReady);
 
@@ -154,8 +142,7 @@ private slots:
     QCOMPARE(spy.count(), 0);  // No subscribers, no event
   }
 
-  void testAvailableEventTypes()
-  {
+  void testAvailableEventTypes() {
     QStringList types = EventBroadcaster::availableEventTypes();
 
     QVERIFY(types.contains("widget_created"));
@@ -165,8 +152,7 @@ private slots:
     QVERIFY(types.contains("command_executed"));
   }
 
-  void testCleanupOnUnsubscribe()
-  {
+  void testCleanupOnUnsubscribe() {
     EventBroadcaster broadcaster;
 
     broadcaster.subscribe("client1", "event1");

@@ -9,8 +9,7 @@
 #include <QUrlQuery>
 #include <QUuid>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
 Server::Server(QObject* parent)
   : QObject(parent)
@@ -18,8 +17,7 @@ Server::Server(QObject* parent)
                                                  QWebSocketServer::NonSecureMode, this))
   , executor_(std::make_unique<CommandExecutor>())
   , recorder_(std::make_unique<ActionRecorder>(this))
-  , broadcaster_(std::make_unique<EventBroadcaster>(this))
-{
+  , broadcaster_(std::make_unique<EventBroadcaster>(this)) {
   // Default to localhost only
   allowedHosts_ = { "127.0.0.1", "::1", "localhost" };
 
@@ -29,22 +27,18 @@ Server::Server(QObject* parent)
   connect(broadcaster_.get(), &EventBroadcaster::eventReady, this, &Server::onEventReady);
 }
 
-Server::~Server()
-{
+Server::~Server() {
   stop();
 }
 
-bool Server::start(quint16 port)
-{
-  if (running_)
-  {
+bool Server::start(quint16 port) {
+  if (running_) {
     return true;
   }
 
   port_ = port;
 
-  if (!wsServer_->listen(QHostAddress::Any, port_))
-  {
+  if (!wsServer_->listen(QHostAddress::Any, port_)) {
     emit serverError(QStringLiteral("Failed to start server on port %1: %2")
                          .arg(port_)
                          .arg(wsServer_->errorString()));
@@ -54,8 +48,7 @@ bool Server::start(quint16 port)
   port_ = wsServer_->serverPort();
   running_ = true;
 
-  if (loggingEnabled_)
-  {
+  if (loggingEnabled_) {
     qDebug() << "Widgeteer WebSocket server started on port" << port_;
   }
 
@@ -63,18 +56,14 @@ bool Server::start(quint16 port)
   return true;
 }
 
-void Server::stop()
-{
-  if (!running_)
-  {
+void Server::stop() {
+  if (!running_) {
     return;
   }
 
   // Close all client connections
-  for (auto it = clients_.begin(); it != clients_.end(); ++it)
-  {
-    if (it.value().socket)
-    {
+  for (auto it = clients_.begin(); it != clients_.end(); ++it) {
+    if (it.value().socket) {
       it.value().socket->close();
     }
   }
@@ -84,102 +73,83 @@ void Server::stop()
   wsServer_->close();
   running_ = false;
 
-  if (loggingEnabled_)
-  {
+  if (loggingEnabled_) {
     qDebug() << "Widgeteer server stopped";
   }
 
   emit serverStopped();
 }
 
-bool Server::isRunning() const
-{
+bool Server::isRunning() const {
   return running_;
 }
 
-void Server::setPort(quint16 port)
-{
+void Server::setPort(quint16 port) {
   port_ = port;
 }
 
-quint16 Server::port() const
-{
+quint16 Server::port() const {
   return port_;
 }
 
-void Server::setAllowedHosts(const QStringList& hosts)
-{
+void Server::setAllowedHosts(const QStringList& hosts) {
   allowedHosts_ = hosts;
 }
 
-void Server::enableLogging(bool enable)
-{
+void Server::enableLogging(bool enable) {
   loggingEnabled_ = enable;
 }
 
-void Server::setApiKey(const QString& apiKey)
-{
+void Server::setApiKey(const QString& apiKey) {
   apiKey_ = apiKey;
 }
 
-QString Server::apiKey() const
-{
+QString Server::apiKey() const {
   return apiKey_;
 }
 
-void Server::setRootWidget(QWidget* root)
-{
+void Server::setRootWidget(QWidget* root) {
   rootWidget_ = root;
 }
 
 // ========== Recording API ==========
 
-void Server::startRecording()
-{
+void Server::startRecording() {
   recorder_->start();
-  if (loggingEnabled_)
-  {
+  if (loggingEnabled_) {
     qDebug() << "Recording started";
   }
 }
 
-void Server::stopRecording()
-{
+void Server::stopRecording() {
   recorder_->stop();
-  if (loggingEnabled_)
-  {
+  if (loggingEnabled_) {
     qDebug() << "Recording stopped, actions recorded:" << recorder_->actionCount();
   }
 }
 
-bool Server::isRecording() const
-{
+bool Server::isRecording() const {
   return recorder_->isRecording();
 }
 
-QJsonObject Server::getRecording() const
-{
+QJsonObject Server::getRecording() const {
   return recorder_->getRecording();
 }
 
 // ========== Event Broadcasting API ==========
 
-void Server::setEventBroadcastingEnabled(bool enabled)
-{
+void Server::setEventBroadcastingEnabled(bool enabled) {
   broadcaster_->setEnabled(enabled);
 }
 
-bool Server::isEventBroadcastingEnabled() const
-{
+bool Server::isEventBroadcastingEnabled() const {
   return broadcaster_->isEnabled();
 }
 
 // ========== Extensibility API Implementation ==========
 
-void Server::registerObject(const QString& name, QObject* object)
-{
-  if (!object)
-  {
+void Server::registerObject(const QString& name, QObject* object) {
+  if (!object) {
     qWarning() << "Widgeteer: Cannot register null object with name:" << name;
     return;
   }
@@ -189,27 +159,22 @@ void Server::registerObject(const QString& name, QObject* object)
   // Update executor with the new registration
   executor_->setRegisteredObjects(&registeredObjects_);
 
-  if (loggingEnabled_)
-  {
+  if (loggingEnabled_) {
     qDebug() << "Widgeteer: Registered object:" << name << "->"
              << object->metaObject()->className();
   }
 }
 
-void Server::unregisterObject(const QString& name)
-{
+void Server::unregisterObject(const QString& name) {
   registeredObjects_.remove(name);
 
-  if (loggingEnabled_)
-  {
+  if (loggingEnabled_) {
     qDebug() << "Widgeteer: Unregistered object:" << name;
   }
 }
 
-void Server::registerCommand(const QString& name, CommandHandler handler)
-{
-  if (!handler)
-  {
+void Server::registerCommand(const QString& name, CommandHandler handler) {
+  if (!handler) {
     qWarning() << "Widgeteer: Cannot register null handler for command:" << name;
     return;
   }
@@ -224,8 +189,7 @@ void Server::registerCommand(const QString& name, CommandHandler handler)
     "wait_signal", "sleep",        "call",         "list_objects", "list_custom_commands"
   };
 
-  if (builtinCommands.contains(name))
-  {
+  if (builtinCommands.contains(name)) {
     qWarning() << "Widgeteer: Cannot override built-in command:" << name;
     return;
   }
@@ -235,46 +199,37 @@ void Server::registerCommand(const QString& name, CommandHandler handler)
   // Update executor with the new registration
   executor_->setCustomCommands(&customCommands_);
 
-  if (loggingEnabled_)
-  {
+  if (loggingEnabled_) {
     qDebug() << "Widgeteer: Registered custom command:" << name;
   }
 }
 
-void Server::unregisterCommand(const QString& name)
-{
+void Server::unregisterCommand(const QString& name) {
   customCommands_.remove(name);
 
-  if (loggingEnabled_)
-  {
+  if (loggingEnabled_) {
     qDebug() << "Widgeteer: Unregistered custom command:" << name;
   }
 }
 
-QStringList Server::registeredObjects() const
-{
+QStringList Server::registeredObjects() const {
   return registeredObjects_.keys();
 }
 
-QStringList Server::registeredCommands() const
-{
+QStringList Server::registeredCommands() const {
   return customCommands_.keys();
 }
 
 // ========== WebSocket Connection Handling ==========
 
-void Server::onNewConnection()
-{
-  while (wsServer_->hasPendingConnections())
-  {
+void Server::onNewConnection() {
+  while (wsServer_->hasPendingConnections()) {
     QWebSocket* socket = wsServer_->nextPendingConnection();
 
     // Check allowed hosts
     QString remoteHost = socket->peerAddress().toString();
-    if (!isAllowedHost(remoteHost))
-    {
-      if (loggingEnabled_)
-      {
+    if (!isAllowedHost(remoteHost)) {
+      if (loggingEnabled_) {
         qDebug() << "Rejected connection from disallowed host:" << remoteHost;
       }
       socket->close(QWebSocketProtocol::CloseCodePolicyViolated, "Forbidden");
@@ -283,10 +238,8 @@ void Server::onNewConnection()
     }
 
     // Validate API key if set
-    if (!apiKey_.isEmpty() && !validateApiKey(socket->requestUrl()))
-    {
-      if (loggingEnabled_)
-      {
+    if (!apiKey_.isEmpty() && !validateApiKey(socket->requestUrl())) {
+      if (loggingEnabled_) {
         qDebug() << "Rejected connection: Invalid or missing API key";
       }
       socket->close(QWebSocketProtocol::CloseCodePolicyViolated, "Unauthorized");
@@ -308,8 +261,7 @@ void Server::onNewConnection()
     connect(socket, &QWebSocket::textMessageReceived, this, &Server::onTextMessageReceived);
     connect(socket, &QWebSocket::disconnected, this, &Server::onClientDisconnected);
 
-    if (loggingEnabled_)
-    {
+    if (loggingEnabled_) {
       qDebug() << "Client connected:" << clientId << "from" << remoteHost;
     }
 
@@ -317,18 +269,15 @@ void Server::onNewConnection()
   }
 }
 
-void Server::onTextMessageReceived(const QString& message)
-{
+void Server::onTextMessageReceived(const QString& message) {
   QWebSocket* socket = qobject_cast<QWebSocket*>(sender());
-  if (!socket)
-  {
+  if (!socket) {
     return;
   }
 
   QJsonParseError parseError;
   QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8(), &parseError);
-  if (parseError.error != QJsonParseError::NoError)
-  {
+  if (parseError.error != QJsonParseError::NoError) {
     QJsonObject errorResponse;
     errorResponse["type"] = messageTypeToString(MessageType::Response);
     errorResponse["success"] = false;
@@ -343,26 +292,22 @@ void Server::onTextMessageReceived(const QString& message)
   handleMessage(socket, doc.object());
 }
 
-void Server::onClientDisconnected()
-{
+void Server::onClientDisconnected() {
   QWebSocket* socket = qobject_cast<QWebSocket*>(sender());
-  if (!socket)
-  {
+  if (!socket) {
     return;
   }
 
   QString clientId = socketToClientId_.value(socket);
 
-  if (!clientId.isEmpty())
-  {
+  if (!clientId.isEmpty()) {
     // Remove from event broadcaster subscriptions
     broadcaster_->removeClient(clientId);
 
     clients_.remove(clientId);
     socketToClientId_.remove(socket);
 
-    if (loggingEnabled_)
-    {
+    if (loggingEnabled_) {
       qDebug() << "Client disconnected:" << clientId;
     }
 
@@ -373,15 +318,11 @@ void Server::onClientDisconnected()
 }
 
 void Server::onEventReady(const QString& eventType, const QJsonObject& data,
-                          const QStringList& recipientClientIds)
-{
-  for (const QString& clientId : recipientClientIds)
-  {
-    if (clients_.contains(clientId))
-    {
+                          const QStringList& recipientClientIds) {
+  for (const QString& clientId : recipientClientIds) {
+    if (clients_.contains(clientId)) {
       QWebSocket* socket = clients_[clientId].socket;
-      if (socket)
-      {
+      if (socket) {
         sendEvent(socket, eventType, data);
       }
     }
@@ -390,13 +331,11 @@ void Server::onEventReady(const QString& eventType, const QJsonObject& data,
 
 // ========== Message Handling ==========
 
-void Server::handleMessage(QWebSocket* client, const QJsonObject& message)
-{
+void Server::handleMessage(QWebSocket* client, const QJsonObject& message) {
   QString typeStr = message.value("type").toString();
   auto type = stringToMessageType(typeStr);
 
-  if (!type.has_value())
-  {
+  if (!type.has_value()) {
     QJsonObject errorResponse;
     errorResponse["type"] = messageTypeToString(MessageType::Response);
     errorResponse["success"] = false;
@@ -407,8 +346,7 @@ void Server::handleMessage(QWebSocket* client, const QJsonObject& message)
     return;
   }
 
-  switch (type.value())
-  {
+  switch (type.value()) {
     case MessageType::Command:
       handleCommand(client, message);
       break;
@@ -437,13 +375,11 @@ void Server::handleMessage(QWebSocket* client, const QJsonObject& message)
   }
 }
 
-void Server::handleCommand(QWebSocket* client, const QJsonObject& message)
-{
+void Server::handleCommand(QWebSocket* client, const QJsonObject& message) {
   Command cmd = Command::fromJson(message);
   emit requestReceived(cmd.id, cmd.name);
 
-  if (loggingEnabled_)
-  {
+  if (loggingEnabled_) {
     qDebug() << "Command:" << cmd.name << "Target:" << cmd.params.value("target").toString();
   }
 
@@ -453,40 +389,32 @@ void Server::handleCommand(QWebSocket* client, const QJsonObject& message)
   // loop from exec() will process subsequent timer events and socket events.
   QTimer::singleShot(0, this, [this, client, cmd]() {
     // Check if client is still connected
-    if (!socketToClientId_.contains(client))
-    {
-      if (loggingEnabled_)
-      {
+    if (!socketToClientId_.contains(client)) {
+      if (loggingEnabled_) {
         qDebug() << "Command" << cmd.name << "skipped: client disconnected";
       }
       return;
     }
 
-    if (loggingEnabled_)
-    {
+    if (loggingEnabled_) {
       qDebug() << "Executing command:" << cmd.name;
     }
 
     Response result;
-    if (QThread::currentThread() == qApp->thread())
-    {
+    if (QThread::currentThread() == qApp->thread()) {
       result = executor_->execute(cmd);
-    }
-    else
-    {
+    } else {
       QMetaObject::invokeMethod(
           qApp, [&]() { result = executor_->execute(cmd); }, Qt::BlockingQueuedConnection);
     }
 
     // Record the command if recording
-    if (recorder_->isRecording())
-    {
+    if (recorder_->isRecording()) {
       recorder_->recordCommand(cmd, result);
     }
 
     // Emit command_executed event if broadcasting is enabled
-    if (broadcaster_->isEnabled() && broadcaster_->hasSubscribers("command_executed"))
-    {
+    if (broadcaster_->isEnabled() && broadcaster_->hasSubscribers("command_executed")) {
       QJsonObject eventData;
       eventData["command"] = cmd.name;
       eventData["params"] = cmd.params;
@@ -498,10 +426,8 @@ void Server::handleCommand(QWebSocket* client, const QJsonObject& message)
     emit responseReady(cmd.id, result.success);
 
     // Check again if client is still connected before sending response
-    if (!socketToClientId_.contains(client))
-    {
-      if (loggingEnabled_)
-      {
+    if (!socketToClientId_.contains(client)) {
+      if (loggingEnabled_) {
         qDebug() << "Command" << cmd.name << "completed but client disconnected";
       }
       return;
@@ -511,20 +437,17 @@ void Server::handleCommand(QWebSocket* client, const QJsonObject& message)
     responseJson["type"] = messageTypeToString(MessageType::Response);
     sendResponse(client, responseJson);
 
-    if (loggingEnabled_)
-    {
+    if (loggingEnabled_) {
       qDebug() << "Response sent for command:" << cmd.name;
     }
   });
 }
 
-void Server::handleSubscribe(QWebSocket* client, const QJsonObject& message)
-{
+void Server::handleSubscribe(QWebSocket* client, const QJsonObject& message) {
   QString clientId = clientIdForSocket(client);
   QString eventType = message.value("event_type").toString();
 
-  if (eventType.isEmpty())
-  {
+  if (eventType.isEmpty()) {
     QJsonObject errorResponse;
     errorResponse["type"] = messageTypeToString(MessageType::Response);
     errorResponse["id"] = message.value("id").toString();
@@ -537,8 +460,7 @@ void Server::handleSubscribe(QWebSocket* client, const QJsonObject& message)
 
   broadcaster_->subscribe(clientId, eventType);
 
-  if (loggingEnabled_)
-  {
+  if (loggingEnabled_) {
     qDebug() << "Client" << clientId << "subscribed to" << eventType;
   }
 
@@ -550,24 +472,18 @@ void Server::handleSubscribe(QWebSocket* client, const QJsonObject& message)
   sendResponse(client, response);
 }
 
-void Server::handleUnsubscribe(QWebSocket* client, const QJsonObject& message)
-{
+void Server::handleUnsubscribe(QWebSocket* client, const QJsonObject& message) {
   QString clientId = clientIdForSocket(client);
   QString eventType = message.value("event_type").toString();
 
-  if (eventType.isEmpty())
-  {
+  if (eventType.isEmpty()) {
     broadcaster_->unsubscribeAll(clientId);
-    if (loggingEnabled_)
-    {
+    if (loggingEnabled_) {
       qDebug() << "Client" << clientId << "unsubscribed from all events";
     }
-  }
-  else
-  {
+  } else {
     broadcaster_->unsubscribe(clientId, eventType);
-    if (loggingEnabled_)
-    {
+    if (loggingEnabled_) {
       qDebug() << "Client" << clientId << "unsubscribed from" << eventType;
     }
   }
@@ -580,8 +496,7 @@ void Server::handleUnsubscribe(QWebSocket* client, const QJsonObject& message)
   sendResponse(client, response);
 }
 
-void Server::handleRecordStart(QWebSocket* client, const QJsonObject& message)
-{
+void Server::handleRecordStart(QWebSocket* client, const QJsonObject& message) {
   startRecording();
 
   QJsonObject response;
@@ -592,8 +507,7 @@ void Server::handleRecordStart(QWebSocket* client, const QJsonObject& message)
   sendResponse(client, response);
 }
 
-void Server::handleRecordStop(QWebSocket* client, const QJsonObject& message)
-{
+void Server::handleRecordStop(QWebSocket* client, const QJsonObject& message) {
   stopRecording();
 
   QJsonObject response;
@@ -606,10 +520,8 @@ void Server::handleRecordStop(QWebSocket* client, const QJsonObject& message)
 
 // ========== Response/Event Sending ==========
 
-void Server::sendResponse(QWebSocket* client, const QJsonObject& response)
-{
-  if (!client)
-  {
+void Server::sendResponse(QWebSocket* client, const QJsonObject& response) {
+  if (!client) {
     return;
   }
 
@@ -617,10 +529,8 @@ void Server::sendResponse(QWebSocket* client, const QJsonObject& response)
   client->sendTextMessage(QString::fromUtf8(data));
 }
 
-void Server::sendEvent(QWebSocket* client, const QString& eventType, const QJsonObject& data)
-{
-  if (!client)
-  {
+void Server::sendEvent(QWebSocket* client, const QString& eventType, const QJsonObject& data) {
+  if (!client) {
     return;
   }
 
@@ -635,28 +545,23 @@ void Server::sendEvent(QWebSocket* client, const QString& eventType, const QJson
 
 // ========== Utility Functions ==========
 
-bool Server::isAllowedHost(const QString& remoteHost) const
-{
-  if (allowedHosts_.isEmpty())
-  {
+bool Server::isAllowedHost(const QString& remoteHost) const {
+  if (allowedHosts_.isEmpty()) {
     return true;  // No restrictions
   }
 
   QString host = remoteHost;
 
   // Handle IPv4-mapped IPv6 addresses
-  if (host.startsWith("::ffff:"))
-  {
+  if (host.startsWith("::ffff:")) {
     host = host.mid(7);
   }
 
   return allowedHosts_.contains(host);
 }
 
-bool Server::validateApiKey(const QUrl& requestUrl) const
-{
-  if (apiKey_.isEmpty())
-  {
+bool Server::validateApiKey(const QUrl& requestUrl) const {
+  if (apiKey_.isEmpty()) {
     return true;  // No API key required
   }
 
@@ -666,8 +571,7 @@ bool Server::validateApiKey(const QUrl& requestUrl) const
   return token == apiKey_;
 }
 
-QString Server::clientIdForSocket(QWebSocket* socket) const
-{
+QString Server::clientIdForSocket(QWebSocket* socket) const {
   return socketToClientId_.value(socket);
 }
 

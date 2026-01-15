@@ -15,14 +15,12 @@
 
 #include <functional>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
 // Type alias for custom command handlers
 using CommandHandler = std::function<QJsonObject(const QJsonObject& params)>;
 
-class WIDGETEER_EXPORT CommandExecutor : public QObject
-{
+class WIDGETEER_EXPORT CommandExecutor : public QObject {
   Q_OBJECT
 
 public:
@@ -50,6 +48,7 @@ private:
   QJsonObject cmdGetProperty(const QJsonObject& params);
   QJsonObject cmdListProperties(const QJsonObject& params);
   QJsonObject cmdGetActions(const QJsonObject& params);
+  QJsonObject cmdGetFormFields(const QJsonObject& params);
 
   // Command handlers - Actions
   QJsonObject cmdClick(const QJsonObject& params);
@@ -79,6 +78,7 @@ private:
   QJsonObject cmdWaitIdle(const QJsonObject& params);
   QJsonObject cmdWaitSignal(const QJsonObject& params);
   QJsonObject cmdSleep(const QJsonObject& params);
+  QJsonObject cmdQuit(const QJsonObject& params);
 
   // Command handlers - Extensibility
   QJsonObject cmdCall(const QJsonObject& params);
@@ -92,8 +92,7 @@ private:
   QWidget* resolveTarget(const QJsonObject& params, QString& errorOut);
 
   // Rollback support
-  struct UndoAction
-  {
+  struct UndoAction {
     std::function<void()> undo;
     QString description;
   };

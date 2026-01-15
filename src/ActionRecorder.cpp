@@ -1,24 +1,21 @@
 #include <widgeteer/ActionRecorder.h>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
-QJsonObject RecordedAction::toJson() const
-{
+QJsonObject RecordedAction::toJson() const {
   QJsonObject json;
   json["command"] = command;
   json["params"] = params;
   return json;
 }
 
-ActionRecorder::ActionRecorder(QObject* parent) : QObject(parent)
-{
+ActionRecorder::ActionRecorder(QObject* parent) : QObject(parent) {
 }
 
-void ActionRecorder::start()
-{
-  if (recording_)
+void ActionRecorder::start() {
+  if (recording_) {
     return;
+  }
 
   clear();
   recording_ = true;
@@ -26,25 +23,24 @@ void ActionRecorder::start()
   emit recordingStarted();
 }
 
-void ActionRecorder::stop()
-{
-  if (!recording_)
+void ActionRecorder::stop() {
+  if (!recording_) {
     return;
+  }
 
   recording_ = false;
   endTime_ = QDateTime::currentDateTime();
   emit recordingStopped();
 }
 
-bool ActionRecorder::isRecording() const
-{
+bool ActionRecorder::isRecording() const {
   return recording_;
 }
 
-void ActionRecorder::recordCommand(const Command& cmd, const Response& response)
-{
-  if (!recording_)
+void ActionRecorder::recordCommand(const Command& cmd, const Response& response) {
+  if (!recording_) {
     return;
+  }
 
   // Skip introspection-only commands that don't modify state
   static const QSet<QString> skipCommands = {
@@ -52,8 +48,9 @@ void ActionRecorder::recordCommand(const Command& cmd, const Response& response)
     "screenshot", "exists", "is_visible", "list_objects", "list_custom_commands"
   };
 
-  if (skipCommands.contains(cmd.name))
+  if (skipCommands.contains(cmd.name)) {
     return;
+  }
 
   RecordedAction action;
   action.command = cmd.name;
@@ -65,8 +62,7 @@ void ActionRecorder::recordCommand(const Command& cmd, const Response& response)
   emit actionRecorded(action);
 }
 
-QJsonObject ActionRecorder::getRecording() const
-{
+QJsonObject ActionRecorder::getRecording() const {
   QJsonObject recording;
   recording["name"] = QStringLiteral("Recorded Session");
   recording["description"] = QStringLiteral("Recorded on %1").arg(startTime_.toString(Qt::ISODate));
@@ -76,8 +72,7 @@ QJsonObject ActionRecorder::getRecording() const
   test["name"] = QStringLiteral("Recorded Test");
 
   QJsonArray steps;
-  for (const RecordedAction& action : actions_)
-  {
+  for (const RecordedAction& action : actions_) {
     steps.append(action.toJson());
   }
   test["steps"] = steps;
@@ -91,25 +86,21 @@ QJsonObject ActionRecorder::getRecording() const
   return recording;
 }
 
-void ActionRecorder::clear()
-{
+void ActionRecorder::clear() {
   actions_.clear();
   startTime_ = QDateTime();
   endTime_ = QDateTime();
 }
 
-int ActionRecorder::actionCount() const
-{
+int ActionRecorder::actionCount() const {
   return actions_.size();
 }
 
-QDateTime ActionRecorder::startTime() const
-{
+QDateTime ActionRecorder::startTime() const {
   return startTime_;
 }
 
-QDateTime ActionRecorder::endTime() const
-{
+QDateTime ActionRecorder::endTime() const {
   return endTime_;
 }
 

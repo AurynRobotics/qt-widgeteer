@@ -23,45 +23,37 @@
 #include <QVBoxLayout>
 
 // Sample service class to demonstrate QObject registration
-class SampleService : public QObject
-{
+class SampleService : public QObject {
   Q_OBJECT
 
 public:
-  explicit SampleService(QObject* parent = nullptr) : QObject(parent)
-  {
+  explicit SampleService(QObject* parent = nullptr) : QObject(parent) {
   }
 
   // Q_INVOKABLE methods can be called via the "call" command
-  Q_INVOKABLE int add(int a, int b)
-  {
+  Q_INVOKABLE int add(int a, int b) {
     return a + b;
   }
 
-  Q_INVOKABLE QString greet(const QString& name)
-  {
+  Q_INVOKABLE QString greet(const QString& name) {
     return QStringLiteral("Hello, %1!").arg(name);
   }
 
-  Q_INVOKABLE QVariantMap getInfo()
-  {
+  Q_INVOKABLE QVariantMap getInfo() {
     return QVariantMap{ { "name", "SampleService" },
                         { "version", "1.0" },
                         { "counter", counter_ } };
   }
 
-  Q_INVOKABLE void incrementCounter()
-  {
+  Q_INVOKABLE void incrementCounter() {
     counter_++;
   }
 
-  Q_INVOKABLE int getCounter() const
-  {
+  Q_INVOKABLE int getCounter() const {
     return counter_;
   }
 
-  Q_INVOKABLE void setCounter(int value)
-  {
+  Q_INVOKABLE void setCounter(int value) {
     counter_ = value;
   }
 
@@ -69,13 +61,11 @@ private:
   int counter_ = 0;
 };
 
-class SampleMainWindow : public QMainWindow
-{
+class SampleMainWindow : public QMainWindow {
   Q_OBJECT
 
 public:
-  explicit SampleMainWindow(QWidget* parent = nullptr) : QMainWindow(parent)
-  {
+  explicit SampleMainWindow(QWidget* parent = nullptr) : QMainWindow(parent) {
     setObjectName("mainWindow");
     setWindowTitle("Widgeteer Sample Application");
     resize(800, 600);
@@ -87,14 +77,12 @@ public:
   }
 
 private slots:
-  void onButtonClicked()
-  {
+  void onButtonClicked() {
     statusBar()->showMessage("Button clicked!", 2000);
     outputText_->append("Button was clicked");
   }
 
-  void onShowDialogClicked()
-  {
+  void onShowDialogClicked() {
     // Test blocking dialog with exec().
     // With async command handling in the Widgeteer server, commands are
     // scheduled via QTimer::singleShot(0), allowing the nested event loop
@@ -107,63 +95,52 @@ private slots:
 
     int result = msgBox.exec();  // Blocking - starts nested event loop
 
-    if (result == QMessageBox::Ok)
-    {
+    if (result == QMessageBox::Ok) {
       outputText_->append("Dialog: OK was clicked");
-    }
-    else
-    {
+    } else {
       outputText_->append("Dialog: Cancel was clicked");
     }
   }
 
-  void onSubmitClicked()
-  {
+  void onSubmitClicked() {
     QString name = nameEdit_->text();
     QString email = emailEdit_->text();
     outputText_->append(QStringLiteral("Form submitted: %1 <%2>").arg(name, email));
     statusBar()->showMessage("Form submitted!", 2000);
   }
 
-  void onClearClicked()
-  {
+  void onClearClicked() {
     nameEdit_->clear();
     emailEdit_->clear();
     outputText_->clear();
     statusBar()->showMessage("Cleared", 2000);
   }
 
-  void onSliderChanged(int value)
-  {
+  void onSliderChanged(int value) {
     progressBar_->setValue(value);
     sliderLabel_->setText(QStringLiteral("Value: %1").arg(value));
   }
 
-  void onComboChanged(int index)
-  {
+  void onComboChanged(int index) {
     outputText_->append(QStringLiteral("Selected: %1").arg(comboBox_->currentText()));
   }
 
-  void onCheckboxToggled(bool checked)
-  {
+  void onCheckboxToggled(bool checked) {
     outputText_->append(QStringLiteral("Checkbox: %1").arg(checked ? "checked" : "unchecked"));
   }
 
-  void onListItemClicked(QListWidgetItem* item)
-  {
+  void onListItemClicked(QListWidgetItem* item) {
     outputText_->append(QStringLiteral("List item clicked: %1").arg(item->text()));
   }
 
-  void onAbout()
-  {
+  void onAbout() {
     QMessageBox::about(this, "About",
                        "Widgeteer Sample Application\n\n"
                        "A demonstration app for testing the Widgeteer framework.");
   }
 
 private:
-  void setupMenuBar()
-  {
+  void setupMenuBar() {
     QMenuBar* menuBar = this->menuBar();
     menuBar->setObjectName("menuBar");
 
@@ -215,8 +192,7 @@ private:
     connect(aboutAction, &QAction::triggered, this, &SampleMainWindow::onAbout);
   }
 
-  void setupToolBar()
-  {
+  void setupToolBar() {
     QToolBar* toolBar = addToolBar("Main Toolbar");
     toolBar->setObjectName("mainToolBar");
 
@@ -230,8 +206,7 @@ private:
     saveBtn->setObjectName("toolbarSave");
   }
 
-  void setupCentralWidget()
-  {
+  void setupCentralWidget() {
     QWidget* central = new QWidget(this);
     central->setObjectName("centralWidget");
     setCentralWidget(central);
@@ -375,8 +350,7 @@ private:
     outputLayout->addWidget(outputText_);
   }
 
-  void setupStatusBar()
-  {
+  void setupStatusBar() {
     QStatusBar* status = statusBar();
     status->setObjectName("statusBar");
     status->showMessage("Ready");
@@ -403,8 +377,7 @@ private:
   QTextEdit* outputText_ = nullptr;
 };
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
   QApplication app(argc, argv);
   app.setApplicationName("Widgeteer Sample");
   app.setApplicationVersion("1.0.0");
@@ -414,13 +387,11 @@ int main(int argc, char* argv[])
   server.enableLogging(true);
 
   quint16 port = 9000;
-  if (argc > 1)
-  {
+  if (argc > 1) {
     port = static_cast<quint16>(QString::fromLocal8Bit(argv[1]).toUInt());
   }
 
-  if (!server.start(port))
-  {
+  if (!server.start(port)) {
     qCritical() << "Failed to start Widgeteer server";
     return 1;
   }

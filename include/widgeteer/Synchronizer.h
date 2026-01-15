@@ -6,16 +6,13 @@
 #include <QString>
 #include <QVariant>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
 class ElementFinder;
 
-class WIDGETEER_EXPORT Synchronizer
-{
+class WIDGETEER_EXPORT Synchronizer {
 public:
-  enum class Condition
-  {
+  enum class Condition {
     Exists,
     NotExists,
     Visible,
@@ -28,8 +25,7 @@ public:
     Idle
   };
 
-  struct WaitParams
-  {
+  struct WaitParams {
     QString target;
     Condition condition = Condition::Exists;
     QString propertyName;
@@ -39,8 +35,7 @@ public:
     int stabilityMs = 200;
   };
 
-  struct WaitResult
-  {
+  struct WaitResult {
     bool success = false;
     int elapsedMs = 0;
     QString error;

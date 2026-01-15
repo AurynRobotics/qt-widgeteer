@@ -5,21 +5,18 @@
 
 using namespace widgeteer;
 
-class TestActionRecorder : public QObject
-{
+class TestActionRecorder : public QObject {
   Q_OBJECT
 
 private slots:
-  void testInitialState()
-  {
+  void testInitialState() {
     ActionRecorder recorder;
 
     QVERIFY(!recorder.isRecording());
     QCOMPARE(recorder.actionCount(), 0);
   }
 
-  void testStartRecording()
-  {
+  void testStartRecording() {
     ActionRecorder recorder;
     QSignalSpy startedSpy(&recorder, &ActionRecorder::recordingStarted);
 
@@ -29,8 +26,7 @@ private slots:
     QCOMPARE(startedSpy.count(), 1);
   }
 
-  void testStopRecording()
-  {
+  void testStopRecording() {
     ActionRecorder recorder;
     QSignalSpy stoppedSpy(&recorder, &ActionRecorder::recordingStopped);
 
@@ -41,8 +37,7 @@ private slots:
     QCOMPARE(stoppedSpy.count(), 1);
   }
 
-  void testStartWhileRecording()
-  {
+  void testStartWhileRecording() {
     ActionRecorder recorder;
     QSignalSpy startedSpy(&recorder, &ActionRecorder::recordingStarted);
 
@@ -52,8 +47,7 @@ private slots:
     QCOMPARE(startedSpy.count(), 1);  // Only one start signal
   }
 
-  void testStopWithoutStart()
-  {
+  void testStopWithoutStart() {
     ActionRecorder recorder;
     QSignalSpy stoppedSpy(&recorder, &ActionRecorder::recordingStopped);
 
@@ -62,8 +56,7 @@ private slots:
     QCOMPARE(stoppedSpy.count(), 0);
   }
 
-  void testRecordCommand()
-  {
+  void testRecordCommand() {
     ActionRecorder recorder;
     QSignalSpy recordedSpy(&recorder, &ActionRecorder::actionRecorded);
 
@@ -83,8 +76,7 @@ private slots:
     QCOMPARE(recordedSpy.count(), 1);
   }
 
-  void testRecordCommandSkipsIntrospection()
-  {
+  void testRecordCommandSkipsIntrospection() {
     ActionRecorder recorder;
     recorder.start();
 
@@ -94,8 +86,7 @@ private slots:
       "screenshot", "exists", "is_visible", "list_objects", "list_custom_commands"
     };
 
-    for (const QString& cmdName : skipCommands)
-    {
+    for (const QString& cmdName : skipCommands) {
       Command cmd;
       cmd.name = cmdName;
       Response resp;
@@ -106,8 +97,7 @@ private slots:
     QCOMPARE(recorder.actionCount(), 0);  // All skipped
   }
 
-  void testRecordCommandWhenNotRecording()
-  {
+  void testRecordCommandWhenNotRecording() {
     ActionRecorder recorder;
 
     Command cmd;
@@ -120,8 +110,7 @@ private slots:
     QCOMPARE(recorder.actionCount(), 0);  // Not recorded
   }
 
-  void testGetRecordingFormat()
-  {
+  void testGetRecordingFormat() {
     ActionRecorder recorder;
     recorder.start();
 
@@ -162,8 +151,7 @@ private slots:
     QCOMPARE(step.value("params").toObject().value("target").toString(), QString("@name:button1"));
   }
 
-  void testClear()
-  {
+  void testClear() {
     ActionRecorder recorder;
     recorder.start();
 
@@ -179,8 +167,7 @@ private slots:
     QCOMPARE(recorder.actionCount(), 0);
   }
 
-  void testStartClearsRecording()
-  {
+  void testStartClearsRecording() {
     ActionRecorder recorder;
     recorder.start();
 
@@ -199,8 +186,7 @@ private slots:
     QCOMPARE(recorder.actionCount(), 0);
   }
 
-  void testTimestamps()
-  {
+  void testTimestamps() {
     ActionRecorder recorder;
 
     recorder.start();

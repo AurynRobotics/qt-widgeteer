@@ -9,21 +9,33 @@ Widgeteer is a Qt6 UI testing and automation framework designed for LLM agent co
 ## Build Commands
 
 ```bash
-# Configure and build
+# Configure and build (Debug is default, includes sanitizers + coverage)
+cmake -B build
+cmake --build build --parallel
+
+# For Release build (no sanitizers/coverage)
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 
 # Run C++ unit tests (Qt Test framework)
-cd build && ctest --output-on-failure
+ctest --test-dir build --output-on-failure
+
+# Generate code coverage report (after running tests)
+./scripts/coverage.sh
 
 # Run integration tests (Python, requires running sample app)
 ./build/sample/widgeteer_sample 9000 &
 cd tests && python test_executor.py sample_tests.json --port 9000
 
 # Headless testing (CI or no display)
-QT_QPA_PLATFORM=offscreen ctest --output-on-failure
+QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 xvfb-run -a python3 test_executor.py sample_tests.json --port 9000
 ```
+
+**Debug Build Features:**
+- AddressSanitizer (ASan) - detects memory errors
+- UndefinedBehaviorSanitizer (UBSan) - detects undefined behavior
+- Code coverage instrumentation (use `./scripts/coverage.sh` to generate reports)
 
 ## Architecture
 
@@ -61,9 +73,26 @@ parent/items[1]        # With index
 
 - C++17, Qt6 idioms
 - Namespace: `widgeteer::`
-- Formatter: clang-format (Google style, 100 char line width)
+- Formatter: clang-format (Google style, 100 char line width, braces required on all control statements)
 - Warnings as errors (-Werror)
 - Qt MOC-enabled (CMAKE_AUTOMOC ON)
+
+## Development Workflow
+
+**IMPORTANT**: After implementing or modifying any feature, and before committing, ALWAYS run:
+
+```bash
+# 1. Run pre-commit hooks (formatting, linting)
+pre-commit run --all-files
+
+# 2. Build the project
+cmake --build build
+
+# 3. Run all tests
+ctest --test-dir build --output-on-failure
+```
+
+All three steps must pass before committing changes.
 
 ## Testing
 

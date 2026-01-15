@@ -9,15 +9,12 @@
 #include <QThread>
 #include <QTimer>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
-Synchronizer::Synchronizer(ElementFinder* finder) : finder_(finder)
-{
+Synchronizer::Synchronizer(ElementFinder* finder) : finder_(finder) {
 }
 
-Synchronizer::WaitResult Synchronizer::wait(const WaitParams& params)
-{
+Synchronizer::WaitResult Synchronizer::wait(const WaitParams& params) {
   WaitResult result;
   QElapsedTimer timer;
   timer.start();
@@ -26,40 +23,29 @@ Synchronizer::WaitResult Synchronizer::wait(const WaitParams& params)
   QRect lastGeometry;
   qint64 stableStartTime = 0;
 
-  while (timer.elapsed() < params.timeoutMs)
-  {
+  while (timer.elapsed() < params.timeoutMs) {
     // Check condition FIRST, before processing any events.
     // This allows detecting dialogs that are already visible
     // without triggering new events that might block.
-    if (params.condition == Condition::Stable)
-    {
+    if (params.condition == Condition::Stable) {
       // Special handling for stability - check if geometry hasn't changed
       auto findResult = finder_->find(params.target);
-      if (findResult.widget)
-      {
+      if (findResult.widget) {
         QRect currentGeometry = findResult.widget->geometry();
-        if (currentGeometry == lastGeometry)
-        {
-          if (stableStartTime == 0)
-          {
+        if (currentGeometry == lastGeometry) {
+          if (stableStartTime == 0) {
             stableStartTime = timer.elapsed();
-          }
-          else if (timer.elapsed() - stableStartTime >= params.stabilityMs)
-          {
+          } else if (timer.elapsed() - stableStartTime >= params.stabilityMs) {
             result.success = true;
             result.elapsedMs = static_cast<int>(timer.elapsed());
             return result;
           }
-        }
-        else
-        {
+        } else {
           lastGeometry = currentGeometry;
           stableStartTime = 0;
         }
       }
-    }
-    else if (checkCondition(params))
-    {
+    } else if (checkCondition(params)) {
       result.success = true;
       result.elapsedMs = static_cast<int>(timer.elapsed());
       return result;
@@ -79,15 +65,13 @@ Synchronizer::WaitResult Synchronizer::wait(const WaitParams& params)
   return result;
 }
 
-Synchronizer::WaitResult Synchronizer::waitForIdle(int timeoutMs)
-{
+Synchronizer::WaitResult Synchronizer::waitForIdle(int timeoutMs) {
   WaitResult result;
   QElapsedTimer timer;
   timer.start();
 
   // Process pending events
-  while (timer.elapsed() < timeoutMs)
-  {
+  while (timer.elapsed() < timeoutMs) {
     // Process all events
     QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
 
@@ -98,8 +82,7 @@ Synchronizer::WaitResult Synchronizer::waitForIdle(int timeoutMs)
     QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
 
     // If we've been processing for a bit and no more events, we're idle
-    if (timer.elapsed() >= 100)
-    {
+    if (timer.elapsed() >= 100) {
       result.success = true;
       result.elapsedMs = static_cast<int>(timer.elapsed());
       return result;
@@ -113,12 +96,10 @@ Synchronizer::WaitResult Synchronizer::waitForIdle(int timeoutMs)
 }
 
 Synchronizer::WaitResult Synchronizer::waitForSignal(QObject* obj, const char* signal,
-                                                     int timeoutMs)
-{
+                                                     int timeoutMs) {
   WaitResult result;
 
-  if (!obj)
-  {
+  if (!obj) {
     result.error = "Object is null";
     return result;
   }
@@ -143,8 +124,7 @@ Synchronizer::WaitResult Synchronizer::waitForSignal(QObject* obj, const char* s
   result.elapsedMs = static_cast<int>(timer.elapsed());
   result.success = (result.elapsedMs < timeoutMs);
 
-  if (!result.success)
-  {
+  if (!result.success) {
     result.error = "Timeout waiting for signal";
   }
 
@@ -152,34 +132,41 @@ Synchronizer::WaitResult Synchronizer::waitForSignal(QObject* obj, const char* s
 }
 
 Synchronizer::Condition Synchronizer::parseCondition(const QString& condition,
-                                                     QString& propertyName, QVariant& propertyValue)
-{
-  if (condition == "exists")
+                                                     QString& propertyName,
+                                                     QVariant& propertyValue) {
+  if (condition == "exists") {
     return Condition::Exists;
-  if (condition == "not_exists")
+  }
+  if (condition == "not_exists") {
     return Condition::NotExists;
-  if (condition == "visible")
+  }
+  if (condition == "visible") {
     return Condition::Visible;
-  if (condition == "not_visible")
+  }
+  if (condition == "not_visible") {
     return Condition::NotVisible;
-  if (condition == "enabled")
+  }
+  if (condition == "enabled") {
     return Condition::Enabled;
-  if (condition == "disabled")
+  }
+  if (condition == "disabled") {
     return Condition::Disabled;
-  if (condition == "focused")
+  }
+  if (condition == "focused") {
     return Condition::Focused;
-  if (condition == "stable")
+  }
+  if (condition == "stable") {
     return Condition::Stable;
-  if (condition == "idle")
+  }
+  if (condition == "idle") {
     return Condition::Idle;
+  }
 
   // Check for property condition: "property:name=value"
-  if (condition.startsWith("property:"))
-  {
+  if (condition.startsWith("property:")) {
     QString propPart = condition.mid(9);
     int eqIndex = propPart.indexOf('=');
-    if (eqIndex > 0)
-    {
+    if (eqIndex > 0) {
       propertyName = propPart.left(eqIndex);
       propertyValue = propPart.mid(eqIndex + 1);
       return Condition::PropertyEquals;
@@ -190,13 +177,11 @@ Synchronizer::Condition Synchronizer::parseCondition(const QString& condition,
   return Condition::Exists;
 }
 
-bool Synchronizer::checkCondition(const WaitParams& params)
-{
+bool Synchronizer::checkCondition(const WaitParams& params) {
   auto findResult = finder_->find(params.target);
   QWidget* widget = findResult.widget;
 
-  switch (params.condition)
-  {
+  switch (params.condition) {
     case Condition::Exists:
       return widget != nullptr;
 
@@ -219,8 +204,7 @@ bool Synchronizer::checkCondition(const WaitParams& params)
       return widget != nullptr && widget->hasFocus();
 
     case Condition::PropertyEquals:
-      if (widget && !params.propertyName.isEmpty())
-      {
+      if (widget && !params.propertyName.isEmpty()) {
         QVariant currentValue = widget->property(params.propertyName.toUtf8().constData());
         return currentValue == params.propertyValue;
       }

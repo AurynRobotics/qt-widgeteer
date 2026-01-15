@@ -8,14 +8,11 @@
 #include <QWidget>
 #include <Qt>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
-class WIDGETEER_EXPORT EventInjector
-{
+class WIDGETEER_EXPORT EventInjector {
 public:
-  struct Result
-  {
+  struct Result {
     bool success = false;
     QString error;
   };

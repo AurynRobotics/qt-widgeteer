@@ -6,18 +6,15 @@
 #include <QTest>
 #include <QTimer>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
 EventInjector::EventInjector() = default;
 
 EventInjector::Result EventInjector::click(QWidget* target, Qt::MouseButton btn, QPoint pos,
-                                           Qt::KeyboardModifiers mods)
-{
+                                           Qt::KeyboardModifiers mods) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
@@ -37,8 +34,7 @@ EventInjector::Result EventInjector::click(QWidget* target, Qt::MouseButton btn,
   // handler's timer (0ms) completes and sends the response.
   QPointer<QWidget> safeTarget = target;
   QTimer::singleShot(10, [safeTarget, clickPos, btn, mods]() {
-    if (!safeTarget)
-    {
+    if (!safeTarget) {
       return;  // Widget was deleted
     }
 
@@ -46,10 +42,8 @@ EventInjector::Result EventInjector::click(QWidget* target, Qt::MouseButton btn,
     // use the native click() method which works reliably in all modes
     // including offscreen. For other widgets, use QTest::mouseClick.
     if (btn == Qt::LeftButton &&
-        clickPos == QPoint(safeTarget->width() / 2, safeTarget->height() / 2))
-    {
-      if (auto* abstractButton = qobject_cast<QAbstractButton*>(safeTarget.data()))
-      {
+        clickPos == QPoint(safeTarget->width() / 2, safeTarget->height() / 2)) {
+      if (auto* abstractButton = qobject_cast<QAbstractButton*>(safeTarget.data())) {
         abstractButton->click();
         return;
       }
@@ -63,12 +57,10 @@ EventInjector::Result EventInjector::click(QWidget* target, Qt::MouseButton btn,
   return result;
 }
 
-EventInjector::Result EventInjector::doubleClick(QWidget* target, QPoint pos)
-{
+EventInjector::Result EventInjector::doubleClick(QWidget* target, QPoint pos) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
@@ -79,12 +71,10 @@ EventInjector::Result EventInjector::doubleClick(QWidget* target, QPoint pos)
   return result;
 }
 
-EventInjector::Result EventInjector::rightClick(QWidget* target, QPoint pos)
-{
+EventInjector::Result EventInjector::rightClick(QWidget* target, QPoint pos) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
@@ -95,12 +85,10 @@ EventInjector::Result EventInjector::rightClick(QWidget* target, QPoint pos)
   return result;
 }
 
-EventInjector::Result EventInjector::press(QWidget* target, Qt::MouseButton btn, QPoint pos)
-{
+EventInjector::Result EventInjector::press(QWidget* target, Qt::MouseButton btn, QPoint pos) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
@@ -111,12 +99,10 @@ EventInjector::Result EventInjector::press(QWidget* target, Qt::MouseButton btn,
   return result;
 }
 
-EventInjector::Result EventInjector::release(QWidget* target, Qt::MouseButton btn, QPoint pos)
-{
+EventInjector::Result EventInjector::release(QWidget* target, Qt::MouseButton btn, QPoint pos) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
@@ -127,12 +113,10 @@ EventInjector::Result EventInjector::release(QWidget* target, Qt::MouseButton bt
   return result;
 }
 
-EventInjector::Result EventInjector::move(QWidget* target, QPoint pos)
-{
+EventInjector::Result EventInjector::move(QWidget* target, QPoint pos) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
@@ -143,16 +127,13 @@ EventInjector::Result EventInjector::move(QWidget* target, QPoint pos)
   return result;
 }
 
-EventInjector::Result EventInjector::drag(QWidget* source, QPoint from, QWidget* dest, QPoint to)
-{
+EventInjector::Result EventInjector::drag(QWidget* source, QPoint from, QWidget* dest, QPoint to) {
   Result result;
 
-  if (!ensureVisible(source, result.error))
-  {
+  if (!ensureVisible(source, result.error)) {
     return result;
   }
-  if (!ensureVisible(dest, result.error))
-  {
+  if (!ensureVisible(dest, result.error)) {
     return result;
   }
 
@@ -168,14 +149,12 @@ EventInjector::Result EventInjector::drag(QWidget* source, QPoint from, QWidget*
 
   // Interpolate
   int steps = 10;
-  for (int i = 1; i <= steps; ++i)
-  {
+  for (int i = 1; i <= steps; ++i) {
     double t = static_cast<double>(i) / steps;
     QPoint intermediate(static_cast<int>(globalFrom.x() + t * (globalTo.x() - globalFrom.x())),
                         static_cast<int>(globalFrom.y() + t * (globalTo.y() - globalFrom.y())));
     QWidget* widgetUnder = QApplication::widgetAt(intermediate);
-    if (widgetUnder)
-    {
+    if (widgetUnder) {
       QPoint localPos = widgetUnder->mapFromGlobal(intermediate);
       QTest::mouseMove(widgetUnder, localPos);
     }
@@ -189,12 +168,10 @@ EventInjector::Result EventInjector::drag(QWidget* source, QPoint from, QWidget*
   return result;
 }
 
-EventInjector::Result EventInjector::scroll(QWidget* target, int deltaX, int deltaY, QPoint pos)
-{
+EventInjector::Result EventInjector::scroll(QWidget* target, int deltaX, int deltaY, QPoint pos) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
@@ -210,23 +187,19 @@ EventInjector::Result EventInjector::scroll(QWidget* target, int deltaX, int del
   return result;
 }
 
-EventInjector::Result EventInjector::hover(QWidget* target, QPoint pos)
-{
+EventInjector::Result EventInjector::hover(QWidget* target, QPoint pos) {
   return move(target, pos);
 }
 
-EventInjector::Result EventInjector::type(QWidget* target, const QString& text)
-{
+EventInjector::Result EventInjector::type(QWidget* target, const QString& text) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
   // Ensure focus
-  if (!target->hasFocus())
-  {
+  if (!target->hasFocus()) {
     target->setFocus();
     QApplication::processEvents();
   }
@@ -239,12 +212,10 @@ EventInjector::Result EventInjector::type(QWidget* target, const QString& text)
 }
 
 EventInjector::Result EventInjector::keyPress(QWidget* target, Qt::Key key,
-                                              Qt::KeyboardModifiers mods)
-{
+                                              Qt::KeyboardModifiers mods) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
@@ -255,12 +226,10 @@ EventInjector::Result EventInjector::keyPress(QWidget* target, Qt::Key key,
 }
 
 EventInjector::Result EventInjector::keyRelease(QWidget* target, Qt::Key key,
-                                                Qt::KeyboardModifiers mods)
-{
+                                                Qt::KeyboardModifiers mods) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
@@ -271,12 +240,10 @@ EventInjector::Result EventInjector::keyRelease(QWidget* target, Qt::Key key,
 }
 
 EventInjector::Result EventInjector::keyClick(QWidget* target, Qt::Key key,
-                                              Qt::KeyboardModifiers mods)
-{
+                                              Qt::KeyboardModifiers mods) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
@@ -286,18 +253,15 @@ EventInjector::Result EventInjector::keyClick(QWidget* target, Qt::Key key,
   return result;
 }
 
-EventInjector::Result EventInjector::shortcut(QWidget* target, const QKeySequence& seq)
-{
+EventInjector::Result EventInjector::shortcut(QWidget* target, const QKeySequence& seq) {
   Result result;
 
-  if (!ensureVisible(target, result.error))
-  {
+  if (!ensureVisible(target, result.error)) {
     return result;
   }
 
   // Send key sequence
-  for (int i = 0; i < seq.count(); ++i)
-  {
+  for (int i = 0; i < seq.count(); ++i) {
     QKeyCombination combo = seq[i];
     QTest::keyClick(target, combo.key(), combo.keyboardModifiers());
   }
@@ -306,18 +270,15 @@ EventInjector::Result EventInjector::shortcut(QWidget* target, const QKeySequenc
   return result;
 }
 
-EventInjector::Result EventInjector::setFocus(QWidget* target)
-{
+EventInjector::Result EventInjector::setFocus(QWidget* target) {
   Result result;
 
-  if (!target)
-  {
+  if (!target) {
     result.error = "Target widget is null";
     return result;
   }
 
-  if (!target->isVisible())
-  {
+  if (!target->isVisible()) {
     result.error = "Target widget is not visible";
     return result;
   }
@@ -325,11 +286,9 @@ EventInjector::Result EventInjector::setFocus(QWidget* target)
   target->setFocus();
   QApplication::processEvents();
 
-  if (!target->hasFocus())
-  {
+  if (!target->hasFocus()) {
     // Try activating the window first
-    if (QWidget* window = target->window())
-    {
+    if (QWidget* window = target->window()) {
       window->activateWindow();
       QApplication::processEvents();
       target->setFocus();
@@ -338,20 +297,17 @@ EventInjector::Result EventInjector::setFocus(QWidget* target)
   }
 
   result.success = target->hasFocus();
-  if (!result.success)
-  {
+  if (!result.success) {
     result.error = "Failed to set focus on widget";
   }
 
   return result;
 }
 
-EventInjector::Result EventInjector::clearFocus()
-{
+EventInjector::Result EventInjector::clearFocus() {
   Result result;
 
-  if (QWidget* focused = QApplication::focusWidget())
-  {
+  if (QWidget* focused = QApplication::focusWidget()) {
     focused->clearFocus();
     QApplication::processEvents();
   }
@@ -360,22 +316,18 @@ EventInjector::Result EventInjector::clearFocus()
   return result;
 }
 
-bool EventInjector::ensureVisible(QWidget* target, QString& errorOut)
-{
-  if (!target)
-  {
+bool EventInjector::ensureVisible(QWidget* target, QString& errorOut) {
+  if (!target) {
     errorOut = "Target widget is null";
     return false;
   }
 
-  if (!target->isVisible())
-  {
+  if (!target->isVisible()) {
     errorOut = "Target widget is not visible";
     return false;
   }
 
-  if (!target->isEnabled())
-  {
+  if (!target->isEnabled()) {
     errorOut = "Target widget is not enabled";
     return false;
   }
@@ -383,10 +335,8 @@ bool EventInjector::ensureVisible(QWidget* target, QString& errorOut)
   return true;
 }
 
-QPoint EventInjector::resolvePosition(QWidget* target, QPoint pos)
-{
-  if (pos.isNull())
-  {
+QPoint EventInjector::resolvePosition(QWidget* target, QPoint pos) {
+  if (pos.isNull()) {
     // Return center of widget
     return QPoint(target->width() / 2, target->height() / 2);
   }

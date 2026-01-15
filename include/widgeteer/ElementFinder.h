@@ -7,27 +7,22 @@
 #include <QString>
 #include <QWidget>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
-class WIDGETEER_EXPORT ElementFinder
-{
+class WIDGETEER_EXPORT ElementFinder {
 public:
-  struct FindResult
-  {
+  struct FindResult {
     QWidget* widget = nullptr;
     QString resolvedPath;
     QString error;
   };
 
-  struct FindOptions
-  {
+  struct FindOptions {
     bool recursive;
     int maxResults;
     bool visibleOnly;
 
-    FindOptions() : recursive(true), maxResults(100), visibleOnly(false)
-    {
+    FindOptions() : recursive(true), maxResults(100), visibleOnly(false) {
     }
   };
 

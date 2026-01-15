@@ -9,13 +9,11 @@
 
 using namespace widgeteer;
 
-class TestElementFinder : public QObject
-{
+class TestElementFinder : public QObject {
   Q_OBJECT
 
 private slots:
-  void initTestCase()
-  {
+  void initTestCase() {
     // Create a test widget hierarchy
     //   testWindow (QWidget)
     //     |-- button1 (QPushButton)
@@ -55,13 +53,11 @@ private slots:
     QTest::qWait(100);  // Let widgets initialize
   }
 
-  void cleanupTestCase()
-  {
+  void cleanupTestCase() {
     delete testWindow_;
   }
 
-  void testFindByObjectName()
-  {
+  void testFindByObjectName() {
     ElementFinder finder;
 
     auto result = finder.find("@name:button1");
@@ -69,32 +65,28 @@ private slots:
     QVERIFY(result.error.isEmpty());
   }
 
-  void testFindByObjectNameNested()
-  {
+  void testFindByObjectNameNested() {
     ElementFinder finder;
 
     auto result = finder.find("@name:nestedButton");
     QCOMPARE(result.widget, nestedButton_);
   }
 
-  void testFindByClassName()
-  {
+  void testFindByClassName() {
     ElementFinder finder;
 
     auto result = finder.find("@class:QLabel");
     QCOMPARE(result.widget, label1_);
   }
 
-  void testFindByText()
-  {
+  void testFindByText() {
     ElementFinder finder;
 
     auto result = finder.find("@text:Test Label");
     QCOMPARE(result.widget, label1_);
   }
 
-  void testFindByPath()
-  {
+  void testFindByPath() {
     ElementFinder finder;
 
     // Find nested button by path
@@ -102,8 +94,7 @@ private slots:
     QCOMPARE(result.widget, nestedButton_);
   }
 
-  void testFindNotFound()
-  {
+  void testFindNotFound() {
     ElementFinder finder;
 
     auto result = finder.find("@name:nonexistent");
@@ -111,8 +102,7 @@ private slots:
     QVERIFY(!result.error.isEmpty());
   }
 
-  void testFindAll()
-  {
+  void testFindAll() {
     ElementFinder finder;
 
     auto results = finder.findAll("@class:QPushButton");
@@ -120,8 +110,7 @@ private slots:
     QCOMPARE(results.size(), 3);  // button1, button2, nestedButton
   }
 
-  void testFindAllWithLimit()
-  {
+  void testFindAllWithLimit() {
     ElementFinder finder;
     ElementFinder::FindOptions opts;
     opts.maxResults = 2;
@@ -131,8 +120,7 @@ private slots:
     QCOMPARE(results.size(), 2);
   }
 
-  void testPathFor()
-  {
+  void testPathFor() {
     ElementFinder finder;
 
     QString path = finder.pathFor(nestedButton_);
@@ -141,8 +129,7 @@ private slots:
     QVERIFY(path.contains("nestedButton"));
   }
 
-  void testCacheInvalidation()
-  {
+  void testCacheInvalidation() {
     ElementFinder finder;
 
     // First lookup should cache
@@ -157,8 +144,7 @@ private slots:
     QCOMPARE(result2.widget, button1_);
   }
 
-  void testFindVisibleOnly()
-  {
+  void testFindVisibleOnly() {
     ElementFinder finder;
     ElementFinder::FindOptions opts;
     opts.visibleOnly = true;

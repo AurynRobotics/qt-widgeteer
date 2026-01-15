@@ -2,14 +2,11 @@
 
 #include <QJsonArray>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
 // MessageType conversion
-QString messageTypeToString(MessageType type)
-{
-  switch (type)
-  {
+QString messageTypeToString(MessageType type) {
+  switch (type) {
     case MessageType::Command:
       return QStringLiteral("command");
     case MessageType::Response:
@@ -28,28 +25,33 @@ QString messageTypeToString(MessageType type)
   return QStringLiteral("unknown");
 }
 
-std::optional<MessageType> stringToMessageType(const QString& str)
-{
-  if (str == QLatin1String("command"))
+std::optional<MessageType> stringToMessageType(const QString& str) {
+  if (str == QLatin1String("command")) {
     return MessageType::Command;
-  if (str == QLatin1String("response"))
+  }
+  if (str == QLatin1String("response")) {
     return MessageType::Response;
-  if (str == QLatin1String("event"))
+  }
+  if (str == QLatin1String("event")) {
     return MessageType::Event;
-  if (str == QLatin1String("subscribe"))
+  }
+  if (str == QLatin1String("subscribe")) {
     return MessageType::Subscribe;
-  if (str == QLatin1String("unsubscribe"))
+  }
+  if (str == QLatin1String("unsubscribe")) {
     return MessageType::Unsubscribe;
-  if (str == QLatin1String("record_start"))
+  }
+  if (str == QLatin1String("record_start")) {
     return MessageType::RecordStart;
-  if (str == QLatin1String("record_stop"))
+  }
+  if (str == QLatin1String("record_stop")) {
     return MessageType::RecordStop;
+  }
   return std::nullopt;
 }
 
 // Command
-Command Command::fromJson(const QJsonObject& json)
-{
+Command Command::fromJson(const QJsonObject& json) {
   Command cmd;
   cmd.id = json.value("id").toString();
   cmd.name = json.value("command").toString();
@@ -58,8 +60,7 @@ Command Command::fromJson(const QJsonObject& json)
   return cmd;
 }
 
-QJsonObject Command::toJson() const
-{
+QJsonObject Command::toJson() const {
   QJsonObject json;
   json["id"] = id;
   json["command"] = name;
@@ -69,15 +70,13 @@ QJsonObject Command::toJson() const
 }
 
 // Transaction
-Transaction Transaction::fromJson(const QJsonObject& json)
-{
+Transaction Transaction::fromJson(const QJsonObject& json) {
   Transaction tx;
   tx.id = json.value("id").toString();
   tx.rollbackOnFailure = json.value("rollback_on_failure").toBool(true);
 
   const QJsonArray steps = json.value("steps").toArray();
-  for (const QJsonValue& step : steps)
-  {
+  for (const QJsonValue& step : steps) {
     Command cmd;
     QJsonObject stepObj = step.toObject();
     cmd.name = stepObj.value("command").toString();
@@ -88,16 +87,14 @@ Transaction Transaction::fromJson(const QJsonObject& json)
   return tx;
 }
 
-QJsonObject Transaction::toJson() const
-{
+QJsonObject Transaction::toJson() const {
   QJsonObject json;
   json["id"] = id;
   json["transaction"] = true;
   json["rollback_on_failure"] = rollbackOnFailure;
 
   QJsonArray stepsArray;
-  for (const Command& cmd : steps)
-  {
+  for (const Command& cmd : steps) {
     QJsonObject stepObj;
     stepObj["command"] = cmd.name;
     stepObj["params"] = cmd.params;
@@ -109,47 +106,38 @@ QJsonObject Transaction::toJson() const
 }
 
 // ErrorDetails
-QJsonObject ErrorDetails::toJson() const
-{
+QJsonObject ErrorDetails::toJson() const {
   QJsonObject json;
   json["code"] = code;
   json["message"] = message;
-  if (!details.isEmpty())
-  {
+  if (!details.isEmpty()) {
     json["details"] = details;
   }
   return json;
 }
 
 // Response
-QJsonObject Response::toJson() const
-{
+QJsonObject Response::toJson() const {
   QJsonObject json;
   json["id"] = id;
   json["success"] = success;
 
-  if (success)
-  {
-    if (!result.isEmpty())
-    {
+  if (success) {
+    if (!result.isEmpty()) {
       json["result"] = result;
     }
-  }
-  else
-  {
+  } else {
     json["error"] = error.toJson();
   }
 
-  if (durationMs > 0)
-  {
+  if (durationMs > 0) {
     json["duration_ms"] = durationMs;
   }
 
   return json;
 }
 
-Response Response::ok(const QString& id, const QJsonObject& result)
-{
+Response Response::ok(const QString& id, const QJsonObject& result) {
   Response resp;
   resp.id = id;
   resp.success = true;
@@ -158,8 +146,7 @@ Response Response::ok(const QString& id, const QJsonObject& result)
 }
 
 Response Response::fail(const QString& id, const QString& code, const QString& message,
-                        const QJsonObject& details)
-{
+                        const QJsonObject& details) {
   Response resp;
   resp.id = id;
   resp.success = false;
@@ -170,8 +157,7 @@ Response Response::fail(const QString& id, const QString& code, const QString& m
 }
 
 // TransactionResponse
-QJsonObject TransactionResponse::toJson() const
-{
+QJsonObject TransactionResponse::toJson() const {
   QJsonObject json;
   json["id"] = id;
   json["success"] = success;
@@ -184,21 +170,17 @@ QJsonObject TransactionResponse::toJson() const
 
 // Helper function
 QJsonObject buildElementNotFoundError(const QString& searchedPath, const QString& partialMatch,
-                                      const QStringList& availableChildren)
-{
+                                      const QStringList& availableChildren) {
   QJsonObject details;
   details["searched_path"] = searchedPath;
 
-  if (!partialMatch.isEmpty())
-  {
+  if (!partialMatch.isEmpty()) {
     details["partial_match"] = partialMatch;
   }
 
-  if (!availableChildren.isEmpty())
-  {
+  if (!availableChildren.isEmpty()) {
     QJsonArray children;
-    for (const QString& child : availableChildren)
-    {
+    for (const QString& child : availableChildren) {
       children.append(child);
     }
     details["available_children"] = children;

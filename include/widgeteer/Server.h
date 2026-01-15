@@ -15,22 +15,19 @@
 #include <functional>
 #include <memory>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
 // Type alias for custom command handlers
 using CommandHandler = std::function<QJsonObject(const QJsonObject& params)>;
 
 // Client connection info
-struct ClientInfo
-{
+struct ClientInfo {
   QWebSocket* socket = nullptr;
   QString id;
   bool authenticated = false;
 };
 
-class WIDGETEER_EXPORT Server : public QObject
-{
+class WIDGETEER_EXPORT Server : public QObject {
   Q_OBJECT
 
 public:

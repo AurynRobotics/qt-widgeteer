@@ -5,13 +5,11 @@
 
 using namespace widgeteer;
 
-class TestProtocol : public QObject
-{
+class TestProtocol : public QObject {
   Q_OBJECT
 
 private slots:
-  void testMessageTypeToString()
-  {
+  void testMessageTypeToString() {
     QCOMPARE(messageTypeToString(MessageType::Command), QString("command"));
     QCOMPARE(messageTypeToString(MessageType::Response), QString("response"));
     QCOMPARE(messageTypeToString(MessageType::Event), QString("event"));
@@ -21,8 +19,7 @@ private slots:
     QCOMPARE(messageTypeToString(MessageType::RecordStop), QString("record_stop"));
   }
 
-  void testStringToMessageType()
-  {
+  void testStringToMessageType() {
     QCOMPARE(stringToMessageType("command"), std::optional(MessageType::Command));
     QCOMPARE(stringToMessageType("response"), std::optional(MessageType::Response));
     QCOMPARE(stringToMessageType("event"), std::optional(MessageType::Event));
@@ -33,8 +30,7 @@ private slots:
     QCOMPARE(stringToMessageType("invalid"), std::nullopt);
   }
 
-  void testCommandFromJson()
-  {
+  void testCommandFromJson() {
     QJsonObject json;
     json["id"] = "test-123";
     json["command"] = "click";
@@ -49,8 +45,22 @@ private slots:
     QCOMPARE(cmd.options.value("timeout").toInt(), 5000);
   }
 
-  void testCommandToJson()
-  {
+  void testCommandFromJsonWithoutParams() {
+    // Commands like get_tree, get_form_fields, screenshot can omit params
+    QJsonObject json;
+    json["id"] = "test-no-params";
+    json["command"] = "get_tree";
+    // Intentionally no "params" or "options" keys
+
+    Command cmd = Command::fromJson(json);
+
+    QCOMPARE(cmd.id, QString("test-no-params"));
+    QCOMPARE(cmd.name, QString("get_tree"));
+    QVERIFY(cmd.params.isEmpty());  // Should be empty, not null
+    QVERIFY(cmd.options.isEmpty());
+  }
+
+  void testCommandToJson() {
     Command cmd;
     cmd.id = "test-456";
     cmd.name = "type";
@@ -66,8 +76,7 @@ private slots:
     QCOMPARE(json.value("options").toObject().value("delay").toInt(), 50);
   }
 
-  void testResponseOk()
-  {
+  void testResponseOk() {
     QJsonObject result;
     result["clicked"] = true;
 
@@ -78,8 +87,7 @@ private slots:
     QCOMPARE(resp.result.value("clicked").toBool(), true);
   }
 
-  void testResponseFail()
-  {
+  void testResponseFail() {
     Response resp = Response::fail("cmd-2", "NOT_FOUND", "Element not found");
 
     QCOMPARE(resp.id, QString("cmd-2"));
@@ -88,8 +96,7 @@ private slots:
     QCOMPARE(resp.error.message, QString("Element not found"));
   }
 
-  void testResponseToJson()
-  {
+  void testResponseToJson() {
     Response resp = Response::ok("cmd-3", QJsonObject{ { "value", 42 } });
     resp.durationMs = 15;
 
@@ -101,8 +108,7 @@ private slots:
     QCOMPARE(json.value("duration_ms").toInt(), 15);
   }
 
-  void testErrorResponseToJson()
-  {
+  void testErrorResponseToJson() {
     Response resp =
         Response::fail("cmd-4", "ERR_CODE", "Error message", QJsonObject{ { "extra", "info" } });
 
@@ -116,8 +122,7 @@ private slots:
              QString("info"));
   }
 
-  void testTransactionFromJson()
-  {
+  void testTransactionFromJson() {
     QJsonObject json;
     json["id"] = "tx-1";
     json["rollback_on_failure"] = true;
@@ -136,8 +141,7 @@ private slots:
     QCOMPARE(tx.steps[1].name, QString("type"));
   }
 
-  void testTransactionToJson()
-  {
+  void testTransactionToJson() {
     Transaction tx;
     tx.id = "tx-2";
     tx.rollbackOnFailure = false;
@@ -155,8 +159,7 @@ private slots:
     QCOMPARE(json.value("steps").toArray().size(), 1);
   }
 
-  void testBuildElementNotFoundError()
-  {
+  void testBuildElementNotFoundError() {
     QJsonObject error =
         buildElementNotFoundError("path/to/widget", "path/to", QStringList{ "child1", "child2" });
 

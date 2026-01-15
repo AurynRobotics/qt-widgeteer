@@ -6,14 +6,11 @@
 #include <QJsonObject>
 #include <QWidget>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
-class WIDGETEER_EXPORT UIIntrospector
-{
+class WIDGETEER_EXPORT UIIntrospector {
 public:
-  struct TreeOptions
-  {
+  struct TreeOptions {
     int maxDepth;
     bool includeInvisible;
     bool includeGeometry;
@@ -21,8 +18,7 @@ public:
     QStringList classFilter;
 
     TreeOptions()
-      : maxDepth(-1), includeInvisible(false), includeGeometry(true), includeProperties(false)
-    {
+      : maxDepth(-1), includeInvisible(false), includeGeometry(true), includeProperties(false) {
     }
   };
 
@@ -40,15 +36,15 @@ public:
   // List available actions/slots for a widget
   QJsonArray listActions(QWidget* widget);
 
+  // Infer semantic role for widget ("button", "textfield", "checkbox", etc.)
+  QString inferWidgetRole(QWidget* widget);
+
 private:
   // Convert widget to JSON recursively
   QJsonObject widgetToJson(QWidget* widget, int depth, const TreeOptions& opts);
 
   // Convert QVariant to JSON value
   QJsonValue propertyToJson(const QVariant& value);
-
-  // Infer semantic role for widget ("button", "input", "container", etc.)
-  QString inferWidgetRole(QWidget* widget);
 
   // Get widget-specific properties based on type
   QJsonObject getWidgetSpecificProps(QWidget* widget);

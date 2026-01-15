@@ -8,11 +8,9 @@
 #include <QJsonObject>
 #include <QObject>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
-struct WIDGETEER_EXPORT RecordedAction
-{
+struct WIDGETEER_EXPORT RecordedAction {
   QString command;
   QJsonObject params;
   QDateTime timestamp;
@@ -21,8 +19,7 @@ struct WIDGETEER_EXPORT RecordedAction
   QJsonObject toJson() const;
 };
 
-class WIDGETEER_EXPORT ActionRecorder : public QObject
-{
+class WIDGETEER_EXPORT ActionRecorder : public QObject {
   Q_OBJECT
 
 public:

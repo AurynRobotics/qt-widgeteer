@@ -123,12 +123,28 @@ client.click("dialog/#okBtn")           # Path with CSS selector
 
 ### Navigation & Inspection
 ```json
-{"type":"command","command":"get_tree","params":{}}
-{"type":"command","command":"find","params":{"query":"@class:QPushButton"}}
+{"type":"command","command":"get_tree","params":{"depth":3,"include_invisible":false,"include_geometry":true}}
+{"type":"command","command":"find","params":{"query":"@class:QPushButton","max_results":100,"visible_only":false}}
 {"type":"command","command":"describe","params":{"target":"@name:widget"}}
 {"type":"command","command":"exists","params":{"target":"@name:widget"}}
 {"type":"command","command":"is_visible","params":{"target":"@name:widget"}}
+{"type":"command","command":"get_form_fields","params":{"visible_only":true}}
 ```
+
+Note: `params` can be omitted or partial - missing fields use defaults.
+
+### get_form_fields (LLM-friendly form discovery)
+Returns all form input widgets with labels, values, and suggested selectors:
+```json
+{"type":"command","command":"get_form_fields","params":{"root":"@name:formPanel","visible_only":true}}
+```
+
+Response includes for each field:
+- `objectName`, `class`, `type` (text/checkbox/combobox/etc.)
+- `label` - associated QLabel text (if found via buddy or proximity)
+- `value` - current value
+- `selector` - suggested selector for automation
+- `toolTip`, `accessibleName` - accessibility hints
 
 ### Actions
 ```json
@@ -169,7 +185,30 @@ client.click("dialog/#okBtn")           # Path with CSS selector
 {"type":"command","command":"sleep","params":{"ms":500}}
 ```
 
+Default timeout is 5000ms if `timeout_ms` is omitted.
+
 Wait conditions: `exists`, `not_exists`, `visible`, `not_visible`, `enabled`, `disabled`, `stable`, `property:name=value`
+
+### Screenshots
+```json
+{"type":"command","command":"screenshot","params":{"format":"png"}}
+{"type":"command","command":"screenshot","params":{"target":"@name:dialog","format":"png"}}
+{"type":"command","command":"screenshot","params":{"annotate":true,"format":"png"}}
+```
+
+Parameters: `target` (optional selector), `format` ("png"/"jpg"), `annotate` (bool).
+
+**Annotated Screenshots** (`annotate: true`):
+- Draws colored bounding boxes around interactive widgets
+- Labels each widget with `[index] name/text`
+- Returns `annotations` array with widget info:
+  - `index` - number shown in image
+  - `role` - widget type (button, textfield, etc.)
+  - `selector` - ready-to-use selector
+  - `bounds` - position in image `{x, y, width, height}`
+  - Widget-specific: `text`, `value`, `currentText`
+
+Useful for visual UI understanding before automation.
 
 ### Assertions
 ```json
@@ -190,8 +229,9 @@ Event types: `widget_created`, `widget_destroyed`, `property_changed`, `focus_ch
 ### Recording
 ```json
 {"type":"record_start"}
-{"type":"record_stop"}  // Returns recorded commands as JSON test file
+{"type":"record_stop"}
 ```
+`record_stop` returns recorded commands as JSON test file.
 
 ## Response Format
 ```json
@@ -283,3 +323,67 @@ with SyncWidgeteerClient(port=9000) as client:
 4. **Use set_value**: Prefer `set_value` over `type` for form controls
 5. **Check exists first**: Verify element exists before complex interactions
 6. **Enable logging**: Use `enableLogging(true)` during development
+
+## LLM Integration Guide
+
+### Recommending objectName Additions
+
+When analyzing a Qt application for automation, **proactively suggest adding objectNames** to widgets that lack them. This dramatically improves test stability and readability.
+
+**Suggest naming based on context:**
+- Form fields: `nameInput`, `emailEdit`, `ageSpinbox`
+- Buttons: `submitButton`, `cancelButton`, `saveBtn`
+- Dialogs: `confirmDialog`, `settingsDialog`
+- Containers: `userFormGroup`, `resultsPanel`
+
+**Example recommendation:**
+```
+I notice these widgets lack objectNames, making selectors fragile:
+
+1. QLineEdit at (120, 45) - likely a username field
+   → Suggest: `usernameEdit`
+
+2. QPushButton with text "Login"
+   → Suggest: `loginButton`
+
+Add these in your Qt code:
+```cpp
+usernameEdit->setObjectName("usernameEdit");
+loginButton->setObjectName("loginButton");
+```
+
+After adding, selectors become stable:
+- `#usernameEdit` instead of `.QLineEdit`
+- `#loginButton` instead of `[text="Login"]`
+```
+
+### Starting Automation Workflow
+
+1. **Get annotated screenshot** - visual overview with widget indices
+   ```python
+   resp = await client.screenshot(annotate=True)
+   ```
+
+2. **Get form fields** - structured data about all inputs
+   ```python
+   fields = await client.get_form_fields()
+   ```
+
+3. **Describe specific widgets** - detailed info including tooltips
+   ```python
+   info = await client.describe("#targetWidget")
+   ```
+
+4. **Check accessibility info** - tooltips and accessible names provide context
+   - `toolTip` often explains the widget's purpose
+   - `accessibleName` may provide a human-readable identifier
+
+### Robust Selector Strategy
+
+Priority order for selectors:
+1. `#objectName` - most stable, survives refactoring
+2. `[accessible="..."]` - good for accessibility-aware apps
+3. `[text="..."]` - works for buttons/labels, breaks if text changes
+4. `.ClassName` - fragile, use only as fallback
+
+When `get_form_fields()` returns a selector, it follows this priority automatically.

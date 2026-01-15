@@ -9,11 +9,9 @@
 #include <QString>
 #include <QStringList>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
-class WIDGETEER_EXPORT EventBroadcaster : public QObject
-{
+class WIDGETEER_EXPORT EventBroadcaster : public QObject {
   Q_OBJECT
 
 public:

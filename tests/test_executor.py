@@ -273,8 +273,14 @@ def main():
     finally:
         if app_process:
             print("\nTerminating application...")
-            app_process.terminate()
-            app_process.wait(timeout=5)
+            # Send quit command for graceful shutdown (allows gcov to flush coverage data)
+            try:
+                client.quit()
+                app_process.wait(timeout=5)
+            except Exception:
+                # Fall back to SIGTERM if quit command fails
+                app_process.terminate()
+                app_process.wait(timeout=5)
 
 
 if __name__ == "__main__":

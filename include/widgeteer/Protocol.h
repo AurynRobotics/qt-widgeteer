@@ -8,12 +8,10 @@
 
 #include <optional>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
 // WebSocket message types
-enum class MessageType
-{
+enum class MessageType {
   Command,      // Client -> Server: Execute a command
   Response,     // Server -> Client: Command result
   Event,        // Server -> Client: Real-time event
@@ -30,8 +28,7 @@ WIDGETEER_EXPORT QString messageTypeToString(MessageType type);
 WIDGETEER_EXPORT std::optional<MessageType> stringToMessageType(const QString& str);
 
 // Error codes for the JSON protocol
-namespace ErrorCode
-{
+namespace ErrorCode {
 constexpr const char* ElementNotFound = "ELEMENT_NOT_FOUND";
 constexpr const char* ElementNotVisible = "ELEMENT_NOT_VISIBLE";
 constexpr const char* ElementNotEnabled = "ELEMENT_NOT_ENABLED";
@@ -48,8 +45,7 @@ constexpr const char* InternalError = "INTERNAL_ERROR";
 }  // namespace ErrorCode
 
 // Command structure
-struct WIDGETEER_EXPORT Command
-{
+struct WIDGETEER_EXPORT Command {
   QString id;
   QString name;
   QJsonObject params;
@@ -60,8 +56,7 @@ struct WIDGETEER_EXPORT Command
 };
 
 // Transaction structure
-struct WIDGETEER_EXPORT Transaction
-{
+struct WIDGETEER_EXPORT Transaction {
   QString id;
   QList<Command> steps;
   bool rollbackOnFailure = true;
@@ -71,8 +66,7 @@ struct WIDGETEER_EXPORT Transaction
 };
 
 // Error details for response
-struct WIDGETEER_EXPORT ErrorDetails
-{
+struct WIDGETEER_EXPORT ErrorDetails {
   QString code;
   QString message;
   QJsonObject details;
@@ -81,8 +75,7 @@ struct WIDGETEER_EXPORT ErrorDetails
 };
 
 // Response structure
-struct WIDGETEER_EXPORT Response
-{
+struct WIDGETEER_EXPORT Response {
   QString id;
   bool success = false;
   QJsonObject result;
@@ -96,8 +89,7 @@ struct WIDGETEER_EXPORT Response
 };
 
 // Transaction response structure
-struct WIDGETEER_EXPORT TransactionResponse
-{
+struct WIDGETEER_EXPORT TransactionResponse {
   QString id;
   bool success = false;
   int completedSteps = 0;

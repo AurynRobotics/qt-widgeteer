@@ -5,6 +5,13 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Default to Debug build if not specified
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  message(STATUS "Setting build type to 'Debug' as none was specified.")
+  set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose the type of build." FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
+
 # Export compile commands for tooling
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -19,6 +26,25 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   )
 elseif(MSVC)
   add_compile_options(/W4 /WX)
+endif()
+
+# Debug build options: Sanitizers and Code Coverage
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  message(STATUS "Debug build: Enabling sanitizers and code coverage")
+
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    # Code coverage
+    add_compile_options(--coverage -fprofile-arcs -ftest-coverage)
+    add_link_options(--coverage)
+
+    # AddressSanitizer
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+
+    # UndefinedBehaviorSanitizer
+    add_compile_options(-fsanitize=undefined)
+    add_link_options(-fsanitize=undefined)
+  endif()
 endif()
 
 # Find Qt6

@@ -151,6 +151,8 @@ class Response:
             return self.data["matches"]
         if "widgets" in self.data:
             return self.data["widgets"]
+        if "fields" in self.data:
+            return self.data["fields"]
 
         # Screenshot
         if "screenshot" in self.data:
@@ -598,11 +600,47 @@ class WidgeteerClient:
             params["include_invisible"] = True
         return await self.command("get_tree", params)
 
-    async def screenshot(self, target: str | None = None, format: str = "png") -> Response:
-        """Capture screenshot."""
-        params = {"format": format}
+    async def screenshot(self, target: str | None = None, format: str = "png",
+                         annotate: bool = False) -> Response:
+        """Capture screenshot, optionally with widget annotations.
+
+        Args:
+            target: Optional widget selector to capture. If None, captures the main window.
+            format: Image format ("png" or "jpg").
+            annotate: If True, draws bounding boxes and labels on interactive widgets.
+                      Also returns an 'annotations' array with widget info and selectors.
+
+        Returns:
+            Response with:
+                - value: Base64-encoded image data
+                - data['format']: Image format
+                - data['width']: Image width
+                - data['height']: Image height
+                - data['annotations']: (if annotate=True) List of widget annotations with:
+                    - index: Widget number in the image
+                    - role: Widget type (button, textfield, etc.)
+                    - selector: Suggested selector for automation
+                    - bounds: {x, y, width, height} position in image
+                    - objectName, class, text/value as applicable
+
+        Example:
+            # Get annotated screenshot for LLM analysis
+            resp = await client.screenshot(annotate=True)
+            if resp.success:
+                # Save the image
+                with open("annotated.png", "wb") as f:
+                    import base64
+                    f.write(base64.b64decode(resp.value))
+
+                # Process annotations
+                for widget in resp.data["annotations"]:
+                    print(f"[{widget['index']}] {widget['role']}: {widget['selector']}")
+        """
+        params: dict = {"format": format}
         if target:
             params["target"] = target
+        if annotate:
+            params["annotate"] = True
         return await self.command("screenshot", params)
 
     async def click(self, target: str, button: str = "left", pos: dict | None = None,
@@ -781,6 +819,7 @@ class WidgeteerClient:
             "builtin": [
                 # Introspection
                 "get_tree", "find", "describe", "get_property", "list_properties", "get_actions",
+                "get_form_fields",
                 # Actions
                 "click", "double_click", "right_click", "type", "key", "key_sequence",
                 "drag", "scroll", "hover", "focus",
@@ -816,6 +855,47 @@ class WidgeteerClient:
             "visible_only": visible_only
         })
 
+    async def get_form_fields(self, root: str | None = None,
+                               visible_only: bool = True) -> Response:
+        """Get all form input fields with their labels and current values.
+
+        This command finds all interactive form widgets (text inputs, checkboxes,
+        combo boxes, spinboxes, etc.) and returns structured information including:
+        - Associated labels (from QLabel buddy or proximity)
+        - Current values
+        - Suggested selectors for automation
+        - Accessibility information
+
+        This is especially useful for LLMs to understand form structure and
+        generate appropriate automation commands.
+
+        Args:
+            root: Optional root widget selector to limit search scope.
+            visible_only: Only include visible widgets (default True).
+
+        Returns:
+            Response with value containing list of field info dicts, each with:
+                - objectName: Widget's object name
+                - class: Qt class name (e.g., "QLineEdit")
+                - type: Simplified type ("text", "checkbox", "combobox", etc.)
+                - label: Associated label text (if found)
+                - value: Current value
+                - selector: Suggested selector for automation
+                - enabled: Whether the widget is enabled
+                - toolTip: Tooltip text (if set)
+                - accessibleName: Accessible name (if set)
+
+        Example:
+            fields = await client.get_form_fields()
+            for field in fields.value:
+                print(f"{field.get('label', 'Unlabeled')}: {field.get('value')}")
+                print(f"  Use selector: {field['selector']}")
+        """
+        params: dict = {"visible_only": visible_only}
+        if root:
+            params["root"] = root
+        return await self.command("get_form_fields", params)
+
     async def wait(self, target: str, condition: str = "exists",
                    timeout_ms: int = 5000) -> Response:
         """Wait for a condition."""
@@ -832,6 +912,10 @@ class WidgeteerClient:
     async def sleep(self, ms: int) -> Response:
         """Hard delay."""
         return await self.command("sleep", {"ms": ms})
+
+    async def quit(self) -> Response:
+        """Request graceful application shutdown."""
+        return await self.command("quit", {})
 
     async def assert_property(self, target: str, property_name: str, operator: str,
                               value: Any) -> Response:
@@ -920,8 +1004,10 @@ class SyncWidgeteerClient:
     def tree(self, **kwargs) -> Response:
         return self._run(self._client.tree(**kwargs))
 
-    def screenshot(self, **kwargs) -> Response:
-        return self._run(self._client.screenshot(**kwargs))
+    def screenshot(self, target: str | None = None, format: str = "png",
+                   annotate: bool = False) -> Response:
+        """Capture screenshot, optionally with widget annotations."""
+        return self._run(self._client.screenshot(target, format, annotate))
 
     def click(self, target: str, **kwargs) -> Response:
         return self._run(self._client.click(target, **kwargs))
@@ -996,6 +1082,13 @@ class SyncWidgeteerClient:
     def find(self, query: str, **kwargs) -> Response:
         return self._run(self._client.find(query, **kwargs))
 
+    def get_form_fields(self, root: str | None = None, visible_only: bool = True) -> Response:
+        """Get all form input fields with their labels and values.
+
+        Useful for understanding form structure before automation.
+        """
+        return self._run(self._client.get_form_fields(root, visible_only))
+
     def wait(self, target: str, **kwargs) -> Response:
         return self._run(self._client.wait(target, **kwargs))
 
@@ -1004,6 +1097,9 @@ class SyncWidgeteerClient:
 
     def sleep(self, ms: int) -> Response:
         return self._run(self._client.sleep(ms))
+
+    def quit(self) -> Response:
+        return self._run(self._client.quit())
 
     def start_recording(self) -> Response:
         return self._run(self._client.start_recording())

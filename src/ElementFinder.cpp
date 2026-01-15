@@ -7,21 +7,17 @@
 #include <QLabel>
 #include <QRegularExpression>
 
-namespace widgeteer
-{
+namespace widgeteer {
 
 ElementFinder::ElementFinder() = default;
 
-ElementFinder::FindResult ElementFinder::find(const QString& selector)
-{
+ElementFinder::FindResult ElementFinder::find(const QString& selector) {
   FindResult result;
 
   // Check cache first
-  if (cache_.contains(selector))
-  {
+  if (cache_.contains(selector)) {
     QWidget* cached = cache_.value(selector);
-    if (cached)
-    {
+    if (cached) {
       result.widget = cached;
       result.resolvedPath = selector;
       return result;
@@ -33,14 +29,11 @@ ElementFinder::FindResult ElementFinder::find(const QString& selector)
   QString error;
   QWidget* widget = resolveSelector(selector, error);
 
-  if (widget)
-  {
+  if (widget) {
     result.widget = widget;
     result.resolvedPath = pathFor(widget);
     cache_.insert(selector, widget);
-  }
-  else
-  {
+  } else {
     result.error = error;
   }
 
@@ -48,84 +41,62 @@ ElementFinder::FindResult ElementFinder::find(const QString& selector)
 }
 
 QList<ElementFinder::FindResult> ElementFinder::findAll(const QString& selector,
-                                                        const FindOptions& opts)
-{
+                                                        const FindOptions& opts) {
   QList<FindResult> results;
 
   // Handle different selector types
-  if (selector.startsWith("@class:"))
-  {
+  if (selector.startsWith("@class:")) {
     QString className = selector.mid(7);
-    for (QWidget* topLevel : topLevelWidgets())
-    {
+    for (QWidget* topLevel : topLevelWidgets()) {
       QList<QWidget*> matches = topLevel->findChildren<QWidget*>();
-      for (QWidget* w : matches)
-      {
-        if (QString::fromLatin1(w->metaObject()->className()) == className)
-        {
-          if (opts.visibleOnly && !w->isVisible())
-          {
+      for (QWidget* w : matches) {
+        if (QString::fromLatin1(w->metaObject()->className()) == className) {
+          if (opts.visibleOnly && !w->isVisible()) {
             continue;
           }
           FindResult r;
           r.widget = w;
           r.resolvedPath = pathFor(w);
           results.append(r);
-          if (results.size() >= opts.maxResults)
-          {
+          if (results.size() >= opts.maxResults) {
             return results;
           }
         }
       }
     }
-  }
-  else if (selector.startsWith("@text:"))
-  {
+  } else if (selector.startsWith("@text:")) {
     QString text = selector.mid(6);
-    for (QWidget* topLevel : topLevelWidgets())
-    {
+    for (QWidget* topLevel : topLevelWidgets()) {
       QList<QWidget*> allWidgets = topLevel->findChildren<QWidget*>();
       allWidgets.prepend(topLevel);
-      for (QWidget* w : allWidgets)
-      {
+      for (QWidget* w : allWidgets) {
         QString widgetText;
-        if (auto* btn = qobject_cast<QAbstractButton*>(w))
-        {
+        if (auto* btn = qobject_cast<QAbstractButton*>(w)) {
           widgetText = btn->text();
-        }
-        else if (auto* label = qobject_cast<QLabel*>(w))
-        {
+        } else if (auto* label = qobject_cast<QLabel*>(w)) {
           widgetText = label->text();
-        }
-        else if (auto* group = qobject_cast<QGroupBox*>(w))
-        {
+        } else if (auto* group = qobject_cast<QGroupBox*>(w)) {
           widgetText = group->title();
         }
 
-        if (widgetText == text)
-        {
-          if (opts.visibleOnly && !w->isVisible())
-          {
+        if (widgetText == text) {
+          if (opts.visibleOnly && !w->isVisible()) {
             continue;
           }
           FindResult r;
           r.widget = w;
           r.resolvedPath = pathFor(w);
           results.append(r);
-          if (results.size() >= opts.maxResults)
-          {
+          if (results.size() >= opts.maxResults) {
             return results;
           }
         }
       }
     }
-  }
-  else
-  {
+  } else {
     // For other selectors, just return the single match
     FindResult r = find(selector);
-    if (r.widget)
-    {
+    if (r.widget) {
       results.append(r);
     }
   }
@@ -133,52 +104,39 @@ QList<ElementFinder::FindResult> ElementFinder::findAll(const QString& selector,
   return results;
 }
 
-QString ElementFinder::pathFor(QWidget* widget)
-{
-  if (!widget)
-  {
+QString ElementFinder::pathFor(QWidget* widget) {
+  if (!widget) {
     return {};
   }
 
   QStringList path;
   QWidget* current = widget;
 
-  while (current)
-  {
+  while (current) {
     QString name = current->objectName();
-    if (name.isEmpty())
-    {
+    if (name.isEmpty()) {
       // Use class name with index if no object name
       QString className = QString::fromLatin1(current->metaObject()->className());
       QWidget* parent = current->parentWidget();
-      if (parent)
-      {
+      if (parent) {
         QList<QWidget*> siblings =
             parent->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
         int index = 0;
         int count = 0;
-        for (int i = 0; i < siblings.size(); ++i)
-        {
-          if (QString::fromLatin1(siblings[i]->metaObject()->className()) == className)
-          {
-            if (siblings[i] == current)
-            {
+        for (int i = 0; i < siblings.size(); ++i) {
+          if (QString::fromLatin1(siblings[i]->metaObject()->className()) == className) {
+            if (siblings[i] == current) {
               index = count;
             }
             ++count;
           }
         }
-        if (count > 1)
-        {
+        if (count > 1) {
           name = QStringLiteral("%1[%2]").arg(className).arg(index);
-        }
-        else
-        {
+        } else {
           name = className;
         }
-      }
-      else
-      {
+      } else {
         name = className;
       }
     }
@@ -189,56 +147,45 @@ QString ElementFinder::pathFor(QWidget* widget)
   return path.join('/');
 }
 
-void ElementFinder::invalidateCache()
-{
+void ElementFinder::invalidateCache() {
   cache_.clear();
 }
 
-QWidget* ElementFinder::byPath(const QString& path, QWidget* root)
-{
-  if (path.isEmpty())
-  {
+QWidget* ElementFinder::byPath(const QString& path, QWidget* root) {
+  if (path.isEmpty()) {
     return root;
   }
 
   QStringList parts = path.split('/', Qt::SkipEmptyParts);
-  if (parts.isEmpty())
-  {
+  if (parts.isEmpty()) {
     return nullptr;
   }
 
   QWidget* current = root;
 
   // If no root provided, find it from top-level widgets
-  if (!current)
-  {
+  if (!current) {
     QString firstPart = parts.takeFirst();
-    for (QWidget* topLevel : topLevelWidgets())
-    {
+    for (QWidget* topLevel : topLevelWidgets()) {
       if (topLevel->objectName() == firstPart ||
-          QString::fromLatin1(topLevel->metaObject()->className()) == firstPart)
-      {
+          QString::fromLatin1(topLevel->metaObject()->className()) == firstPart) {
         current = topLevel;
         break;
       }
     }
-    if (!current)
-    {
+    if (!current) {
       return nullptr;
     }
   }
 
   // Navigate through the path
-  for (const QString& part : parts)
-  {
+  for (const QString& part : parts) {
     QWidget* child = findChild(current, part, false);
-    if (!child)
-    {
+    if (!child) {
       // Try recursive search if direct child not found
       child = findChild(current, part, true);
     }
-    if (!child)
-    {
+    if (!child) {
       return nullptr;
     }
     current = child;
@@ -247,62 +194,48 @@ QWidget* ElementFinder::byPath(const QString& path, QWidget* root)
   return current;
 }
 
-QWidget* ElementFinder::byName(const QString& name, QWidget* root)
-{
-  if (root)
-  {
+QWidget* ElementFinder::byName(const QString& name, QWidget* root) {
+  if (root) {
     return root->findChild<QWidget*>(name);
   }
 
-  for (QWidget* topLevel : topLevelWidgets())
-  {
-    if (topLevel->objectName() == name)
-    {
+  for (QWidget* topLevel : topLevelWidgets()) {
+    if (topLevel->objectName() == name) {
       return topLevel;
     }
     QWidget* found = topLevel->findChild<QWidget*>(name);
-    if (found)
-    {
+    if (found) {
       return found;
     }
   }
   return nullptr;
 }
 
-QWidget* ElementFinder::byClass(const QString& className, QWidget* root)
-{
+QWidget* ElementFinder::byClass(const QString& className, QWidget* root) {
   auto matchesClass = [&className](QWidget* w) {
     return QString::fromLatin1(w->metaObject()->className()) == className;
   };
 
-  if (root)
-  {
-    if (matchesClass(root))
-    {
+  if (root) {
+    if (matchesClass(root)) {
       return root;
     }
     QList<QWidget*> children = root->findChildren<QWidget*>();
-    for (QWidget* child : children)
-    {
-      if (matchesClass(child))
-      {
+    for (QWidget* child : children) {
+      if (matchesClass(child)) {
         return child;
       }
     }
     return nullptr;
   }
 
-  for (QWidget* topLevel : topLevelWidgets())
-  {
-    if (matchesClass(topLevel))
-    {
+  for (QWidget* topLevel : topLevelWidgets()) {
+    if (matchesClass(topLevel)) {
       return topLevel;
     }
     QList<QWidget*> children = topLevel->findChildren<QWidget*>();
-    for (QWidget* child : children)
-    {
-      if (matchesClass(child))
-      {
+    for (QWidget* child : children) {
+      if (matchesClass(child)) {
         return child;
       }
     }
@@ -310,89 +243,69 @@ QWidget* ElementFinder::byClass(const QString& className, QWidget* root)
   return nullptr;
 }
 
-QWidget* ElementFinder::byText(const QString& text, QWidget* root)
-{
+QWidget* ElementFinder::byText(const QString& text, QWidget* root) {
   auto hasText = [&text](QWidget* w) -> bool {
-    if (auto* btn = qobject_cast<QAbstractButton*>(w))
-    {
+    if (auto* btn = qobject_cast<QAbstractButton*>(w)) {
       return btn->text() == text;
     }
-    if (auto* label = qobject_cast<QLabel*>(w))
-    {
+    if (auto* label = qobject_cast<QLabel*>(w)) {
       return label->text() == text;
     }
-    if (auto* group = qobject_cast<QGroupBox*>(w))
-    {
+    if (auto* group = qobject_cast<QGroupBox*>(w)) {
       return group->title() == text;
     }
     return false;
   };
 
   QList<QWidget*> searchList;
-  if (root)
-  {
+  if (root) {
     searchList.append(root);
     searchList.append(root->findChildren<QWidget*>());
-  }
-  else
-  {
-    for (QWidget* topLevel : topLevelWidgets())
-    {
+  } else {
+    for (QWidget* topLevel : topLevelWidgets()) {
       searchList.append(topLevel);
       searchList.append(topLevel->findChildren<QWidget*>());
     }
   }
 
-  for (QWidget* w : searchList)
-  {
-    if (hasText(w))
-    {
+  for (QWidget* w : searchList) {
+    if (hasText(w)) {
       return w;
     }
   }
   return nullptr;
 }
 
-QWidget* ElementFinder::byAccessible(const QString& name, QWidget* root)
-{
+QWidget* ElementFinder::byAccessible(const QString& name, QWidget* root) {
   auto hasAccessibleName = [&name](QWidget* w) -> bool {
     QAccessibleInterface* iface = QAccessible::queryAccessibleInterface(w);
-    if (iface)
-    {
+    if (iface) {
       return iface->text(QAccessible::Name) == name;
     }
     return false;
   };
 
   QList<QWidget*> searchList;
-  if (root)
-  {
+  if (root) {
     searchList.append(root);
     searchList.append(root->findChildren<QWidget*>());
-  }
-  else
-  {
-    for (QWidget* topLevel : topLevelWidgets())
-    {
+  } else {
+    for (QWidget* topLevel : topLevelWidgets()) {
       searchList.append(topLevel);
       searchList.append(topLevel->findChildren<QWidget*>());
     }
   }
 
-  for (QWidget* w : searchList)
-  {
-    if (hasAccessibleName(w))
-    {
+  for (QWidget* w : searchList) {
+    if (hasAccessibleName(w)) {
       return w;
     }
   }
   return nullptr;
 }
 
-QWidget* ElementFinder::resolveSelector(const QString& selector, QString& errorOut)
-{
-  if (selector.isEmpty())
-  {
+QWidget* ElementFinder::resolveSelector(const QString& selector, QString& errorOut) {
+  if (selector.isEmpty()) {
     errorOut = "Empty selector";
     return nullptr;
   }
@@ -400,51 +313,41 @@ QWidget* ElementFinder::resolveSelector(const QString& selector, QString& errorO
   QWidget* result = nullptr;
 
   // @name:objectName
-  if (selector.startsWith("@name:"))
-  {
+  if (selector.startsWith("@name:")) {
     QString name = selector.mid(6);
     result = byName(name);
-    if (!result)
-    {
+    if (!result) {
       errorOut = QStringLiteral("No widget with objectName '%1'").arg(name);
     }
   }
   // @class:ClassName
-  else if (selector.startsWith("@class:"))
-  {
+  else if (selector.startsWith("@class:")) {
     QString className = selector.mid(7);
     result = byClass(className);
-    if (!result)
-    {
+    if (!result) {
       errorOut = QStringLiteral("No widget with class '%1'").arg(className);
     }
   }
   // @text:Text Content
-  else if (selector.startsWith("@text:"))
-  {
+  else if (selector.startsWith("@text:")) {
     QString text = selector.mid(6);
     result = byText(text);
-    if (!result)
-    {
+    if (!result) {
       errorOut = QStringLiteral("No widget with text '%1'").arg(text);
     }
   }
   // @accessible:Accessible Name
-  else if (selector.startsWith("@accessible:"))
-  {
+  else if (selector.startsWith("@accessible:")) {
     QString name = selector.mid(12);
     result = byAccessible(name);
-    if (!result)
-    {
+    if (!result) {
       errorOut = QStringLiteral("No widget with accessible name '%1'").arg(name);
     }
   }
   // Path-based: parent/child/grandchild
-  else
-  {
+  else {
     result = byPath(selector);
-    if (!result)
-    {
+    if (!result) {
       errorOut = QStringLiteral("No widget matching path '%1'").arg(selector);
     }
   }
@@ -452,15 +355,12 @@ QWidget* ElementFinder::resolveSelector(const QString& selector, QString& errorO
   return result;
 }
 
-QList<QWidget*> ElementFinder::topLevelWidgets()
-{
+QList<QWidget*> ElementFinder::topLevelWidgets() {
   return QApplication::topLevelWidgets();
 }
 
-QWidget* ElementFinder::findChild(QWidget* parent, const QString& name, bool recursive)
-{
-  if (!parent)
-  {
+QWidget* ElementFinder::findChild(QWidget* parent, const QString& name, bool recursive) {
+  if (!parent) {
     return nullptr;
   }
 
@@ -468,8 +368,7 @@ QWidget* ElementFinder::findChild(QWidget* parent, const QString& name, bool rec
   static QRegularExpression indexRegex(R"(^(.+)\[(\d+)\]$)");
   QRegularExpressionMatch match = indexRegex.match(name);
 
-  if (match.hasMatch())
-  {
+  if (match.hasMatch()) {
     QString baseName = match.captured(1);
     int index = match.captured(2).toInt();
 
@@ -478,14 +377,11 @@ QWidget* ElementFinder::findChild(QWidget* parent, const QString& name, bool rec
     QList<QWidget*> children = parent->findChildren<QWidget*>(QString(), opts);
 
     int count = 0;
-    for (QWidget* child : children)
-    {
+    for (QWidget* child : children) {
       bool matches = (child->objectName() == baseName) ||
                      (QString::fromLatin1(child->metaObject()->className()) == baseName);
-      if (matches)
-      {
-        if (count == index)
-        {
+      if (matches) {
+        if (count == index) {
           return child;
         }
         ++count;
@@ -495,8 +391,7 @@ QWidget* ElementFinder::findChild(QWidget* parent, const QString& name, bool rec
   }
 
   // Handle wildcard: *
-  if (name == "*")
-  {
+  if (name == "*") {
     // Return first child
     Qt::FindChildOptions opts =
         recursive ? Qt::FindChildrenRecursively : Qt::FindDirectChildrenOnly;
@@ -509,17 +404,14 @@ QWidget* ElementFinder::findChild(QWidget* parent, const QString& name, bool rec
 
   // Try by objectName first
   QWidget* result = parent->findChild<QWidget*>(name, opts);
-  if (result)
-  {
+  if (result) {
     return result;
   }
 
   // Try by class name
   QList<QWidget*> children = parent->findChildren<QWidget*>(QString(), opts);
-  for (QWidget* child : children)
-  {
-    if (QString::fromLatin1(child->metaObject()->className()) == name)
-    {
+  for (QWidget* child : children) {
+    if (QString::fromLatin1(child->metaObject()->className()) == name) {
       return child;
     }
   }
