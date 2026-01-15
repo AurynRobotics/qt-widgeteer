@@ -382,6 +382,119 @@ with open("screenshot.png", "wb") as f:
     f.write(image_data)
 ```
 
+### Handling Dialogs (Error/Warning Messages)
+
+Qt applications often show dialog boxes for errors, warnings, or confirmations. Here's how to detect and handle them.
+
+#### Detecting Dialogs
+
+```python
+# Find any QMessageBox dialogs (standard error/warning/info)
+result = client.find("@class:QMessageBox")
+if result.success and result.data.get("count", 0) > 0:
+    print("Message box is active!")
+    for match in result.data["matches"]:
+        print(f"  Found: {match['path']}")
+
+# Find any QDialog (custom dialogs)
+result = client.find("@class:QDialog")
+
+# Check for specific dialog by objectName
+result = client.exists("@name:errorDialog")
+if result.data.get("exists"):
+    print("Error dialog is showing")
+```
+
+#### Getting Dialog Content
+
+```python
+# Describe the message box to see its content
+result = client.describe("@class:QMessageBox")
+if result.success:
+    props = result.data.get("properties", {})
+    print(f"Title: {props.get('windowTitle')}")
+    print(f"Text: {props.get('text')}")
+    print(f"Informative text: {props.get('informativeText')}")
+```
+
+#### Closing Dialogs
+
+**Click a button in the dialog:**
+```python
+# Click OK button
+client.click("@class:QMessageBox/@text:OK")
+
+# Click Cancel button
+client.click("@class:QMessageBox/@text:Cancel")
+
+# Click any button (first one found)
+client.click("@class:QMessageBox/@class:QPushButton")
+```
+
+**Press Escape key:**
+```python
+# Press Escape to close/cancel the dialog
+client.key("@class:QMessageBox", "Escape")
+```
+
+**Invoke close method directly:**
+```python
+# Call close() on the dialog
+client.invoke("@class:QDialog", "close")
+
+# Or use accept/reject for QDialog
+client.invoke("@class:QDialog", "accept")  # Like clicking OK
+client.invoke("@class:QDialog", "reject")  # Like clicking Cancel
+```
+
+#### Wait for Dialog to Appear
+
+```python
+# Wait for a dialog before interacting
+client.wait("@class:QMessageBox", condition="exists", timeout_ms=5000)
+client.click("@class:QMessageBox/@text:OK")
+```
+
+#### Helper Function to Close Any Dialog
+
+```python
+def close_any_dialog(client):
+    """Close any active dialog/message box. Returns True if dialog was found."""
+    # Check for QMessageBox first (most common for errors/warnings)
+    result = client.find("@class:QMessageBox")
+    if result.success and result.data.get("count", 0) > 0:
+        # Try clicking common buttons
+        for btn_text in ["OK", "Close", "Yes", "Cancel"]:
+            btn_result = client.exists(f"@class:QMessageBox/@text:{btn_text}")
+            if btn_result.success and btn_result.data.get("exists"):
+                client.click(f"@class:QMessageBox/@text:{btn_text}")
+                return True
+        # Fallback: press Escape
+        client.key("@class:QMessageBox", "Escape")
+        return True
+
+    # Check for generic QDialog
+    result = client.find("@class:QDialog")
+    if result.success and result.data.get("count", 0) > 0:
+        client.key("@class:QDialog", "Escape")
+        return True
+
+    return False  # No dialog found
+```
+
+#### Common Dialog Classes
+
+| Class | Description |
+|-------|-------------|
+| `QMessageBox` | Standard message dialogs (info, warning, error, question) |
+| `QDialog` | Base class for custom dialogs |
+| `QErrorMessage` | Error message dialogs with "don't show again" option |
+| `QProgressDialog` | Progress dialogs with cancel button |
+| `QInputDialog` | Simple input dialogs (text, number, item selection) |
+| `QFileDialog` | File open/save dialogs |
+| `QColorDialog` | Color picker dialogs |
+| `QFontDialog` | Font selection dialogs |
+
 ---
 
 ## Testing Patterns

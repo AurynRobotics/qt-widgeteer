@@ -397,6 +397,59 @@
           }
         }
       ]
+    },
+    {
+      "name": "Open and close QMessageBox dialog",
+      "steps": [
+        {
+          "command": "set_value",
+          "params": {
+            "target": "@name:tabWidget",
+            "value": 1
+          }
+        },
+        {
+          "command": "wait_idle",
+          "params": {
+            "timeout_ms": 500
+          }
+        },
+        {
+          "command": "click",
+          "params": {
+            "target": "@name:showDialogButton"
+          }
+        },
+        {
+          "command": "wait",
+          "params": {
+            "target": "@name:confirmDialog",
+            "condition": "visible",
+            "timeout_ms": 2000
+          }
+        },
+        {
+          "command": "is_visible",
+          "params": {
+            "target": "@name:confirmDialog"
+          }
+        },
+        {
+          "command": "key",
+          "params": {
+            "target": "@name:confirmDialog",
+            "key": "Escape"
+          }
+        },
+        {
+          "command": "wait",
+          "params": {
+            "target": "@name:confirmDialog",
+            "condition": "not_exists",
+            "timeout_ms": 2000
+          }
+        }
+      ]
     }
   ],
   "setup": [

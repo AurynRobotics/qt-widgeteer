@@ -15,7 +15,12 @@ from urllib.parse import urlencode
 
 try:
     import websockets
-    from websockets.asyncio.client import connect as ws_connect
+    # Try newer websockets 13+ API first
+    try:
+        from websockets.asyncio.client import connect as ws_connect
+    except (ImportError, ModuleNotFoundError):
+        # Fall back to websockets 12.x and earlier
+        from websockets import connect as ws_connect
 except ImportError:
     websockets = None
 

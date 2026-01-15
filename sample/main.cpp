@@ -93,6 +93,30 @@ private slots:
     outputText_->append("Button was clicked");
   }
 
+  void onShowDialogClicked()
+  {
+    // Use non-blocking dialog so Widgeteer can still process commands
+    QMessageBox* msgBox = new QMessageBox(this);
+    msgBox->setObjectName("confirmDialog");
+    msgBox->setWindowTitle("Confirm Action");
+    msgBox->setText("Do you want to proceed with this action?");
+    msgBox->setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+
+    connect(msgBox, &QMessageBox::finished, this, [this, msgBox](int result) {
+      if (result == QMessageBox::Ok)
+      {
+        outputText_->append("Dialog: OK was clicked");
+      }
+      else
+      {
+        outputText_->append("Dialog: Cancel was clicked");
+      }
+      msgBox->deleteLater();  // Safe deletion after event processing
+    });
+
+    msgBox->show();  // Non-blocking - allows event loop to continue
+  }
+
   void onSubmitClicked()
   {
     QString name = nameEdit_->text();
@@ -329,6 +353,12 @@ private:
     controlsLayout->addWidget(actionButton_);
     connect(actionButton_, &QPushButton::clicked, this, &SampleMainWindow::onButtonClicked);
 
+    // Dialog button
+    showDialogButton_ = new QPushButton("Show Dialog", controlsTab);
+    showDialogButton_->setObjectName("showDialogButton");
+    controlsLayout->addWidget(showDialogButton_);
+    connect(showDialogButton_, &QPushButton::clicked, this, &SampleMainWindow::onShowDialogClicked);
+
     controlsLayout->addStretch();
 
     // Right side - output
@@ -367,6 +397,7 @@ private:
   QProgressBar* progressBar_ = nullptr;
   QListWidget* listWidget_ = nullptr;
   QPushButton* actionButton_ = nullptr;
+  QPushButton* showDialogButton_ = nullptr;
 
   // Output
   QTextEdit* outputText_ = nullptr;
