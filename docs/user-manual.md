@@ -337,28 +337,32 @@ client.set_value("@name:mainTabWidget", 1)  # Switch to second tab
 ### Reading Values
 
 ```python
-# Get a property
+# Get a property - use .value for direct access
 result = client.get_property("@name:nameEdit", "text")
-print(result.data["result"]["value"])  # "John Doe"
+print(result.value)  # "John Doe"
 
-# Check existence
+# Check existence - .value returns bool
 result = client.exists("@name:submitButton")
-print(result.data["result"]["exists"])  # True
+print(result.value)  # True
 
-# Check visibility
+# Check visibility - .value returns bool
 result = client.is_visible("@name:loadingSpinner")
-print(result.data["result"]["visible"])  # False
+print(result.value)  # False
+
+# Full data still available via .data for advanced use
+result = client.get_property("@name:nameEdit", "text")
+print(result.data)  # {"property": "text", "value": "John Doe"}
 ```
 
 ### Assertions
 
 ```python
-# Verify property value
+# Verify property value - .value returns bool (passed/failed)
 result = client.assert_property("@name:nameEdit", "text", "==", "John Doe")
-if result.data["result"]["passed"]:
+if result.value:  # True if passed
     print("Assertion passed!")
 else:
-    print(f"Expected: John Doe, Got: {result.data['result']['actual']}")
+    print(f"Expected: John Doe, Got: {result.data['actual']}")
 
 # Various operators
 client.assert_property("@name:progressBar", "value", ">=", 50)
@@ -942,12 +946,23 @@ Keep selectors organized and reusable (see [Page Object Pattern](#page-object-pa
 ### 5. Handle Errors Gracefully
 
 ```python
+from widgeteer_client import WidgeteerError
+
+# Option 1: Check error_code for specific handling
 result = client.click("@name:optionalButton")
 if not result.success:
-    if result.error == "ELEMENT_NOT_FOUND":
+    if result.error_code == "ELEMENT_NOT_FOUND":
         print("Button not present, skipping...")
     else:
-        raise Exception(f"Unexpected error: {result.error}")
+        raise Exception(f"Unexpected error: [{result.error_code}] {result.error}")
+
+# Option 2: Use raise_for_error() for concise code
+try:
+    client.click("@name:submitButton").raise_for_error()
+    client.type_text("@name:nameEdit", "Hello").raise_for_error()
+except WidgeteerError as e:
+    print(f"Command failed: {e}")
+    print(f"Error code: {e.code}")  # e.g., "ELEMENT_NOT_FOUND"
 ```
 
 ### 6. Clean Up After Tests

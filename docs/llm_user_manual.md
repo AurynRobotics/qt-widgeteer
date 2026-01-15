@@ -52,7 +52,15 @@ from widgeteer_client import WidgeteerClient
 async with WidgeteerClient(port=9000, token="key") as client:
     await client.click("@name:button1")
     await client.type_text("@name:input", "Hello")
+
+    # Use .value for direct access to results
     result = await client.get_property("@name:label", "text")
+    print(result.value)  # The text value directly
+
+    # Boolean checks return bool via .value
+    result = await client.exists("@name:button1")
+    if result.value:  # True/False
+        print("Button exists!")
 ```
 
 ### Sync Client
@@ -61,19 +69,55 @@ from widgeteer_client import SyncWidgeteerClient
 
 with SyncWidgeteerClient(port=9000) as client:
     client.click("@name:button1")
+
+    # Same .value API works
+    text = client.get_property("@name:label", "text").value
+```
+
+### Batch Commands (Reduced Latency)
+```python
+# Execute multiple commands in parallel - all sent before waiting for responses
+results = await client.batch([
+    {"command": "get_property", "params": {"target": "@name:edit1", "property": "text"}},
+    {"command": "get_property", "params": {"target": "@name:edit2", "property": "text"}},
+    {"command": "is_visible", "params": {"target": "@name:dialog"}},
+])
+text1, text2, visible = [r.value for r in results]
+
+# Simpler tuple syntax
+text1, text2 = await client.batch_commands(
+    ("get_property", {"target": "@name:edit1", "property": "text"}),
+    ("get_property", {"target": "@name:edit2", "property": "text"}),
+)
 ```
 
 ## Selectors
 
-| Pattern | Example | Matches |
-|---------|---------|---------|
-| `@name:X` | `@name:saveBtn` | objectName == "saveBtn" |
-| `@class:X` | `@class:QPushButton` | Class name match |
-| `@text:X` | `@text:OK` | Button/label text |
-| `@accessible:X` | `@accessible:Save` | Accessible name |
-| `path/to/widget` | `mainWindow/toolbar/saveBtn` | Hierarchy path |
-| `path[n]` | `list/item[0]` | Index for duplicates |
-| `*/child` | `container/*/label` | Wildcard |
+The Python client supports both CSS-like syntax (simpler) and native syntax:
+
+| CSS-like | Native | Matches |
+|----------|--------|---------|
+| `#saveBtn` | `@name:saveBtn` | objectName == "saveBtn" |
+| `.QPushButton` | `@class:QPushButton` | Qt class name |
+| `[text="OK"]` | `@text:OK` | Button/label text |
+| `[accessible="Save"]` | `@accessible:Save` | Accessible name |
+
+**Hierarchical paths** (both syntaxes work):
+```python
+"mainWindow/toolbar/saveBtn"      # Plain path
+"mainWindow/#saveBtn"             # CSS-like in path
+"dialog/.QPushButton"             # Class in path
+"list/item[0]"                    # Index for duplicates
+"container/*/label"               # Wildcard
+```
+
+**Examples:**
+```python
+client.click("#submitButton")           # By objectName
+client.click(".QPushButton")            # First QPushButton
+client.click('[text="OK"]')             # By text content
+client.click("dialog/#okBtn")           # Path with CSS selector
+```
 
 ## Commands
 
@@ -170,28 +214,6 @@ Error response:
 }
 ```
 
-## CLI Tool
-
-```bash
-# Basic commands
-widgeteer tree                           # Get widget tree
-widgeteer find "@class:QPushButton"      # Find buttons
-widgeteer click "@name:saveBtn"          # Click widget
-widgeteer type "@name:input" "Hello"     # Type text
-widgeteer get-property "@name:label" text
-
-# With auth
-widgeteer -t secret-token click "@name:btn"
-
-# Run test file
-widgeteer run tests/sample_tests.json
-
-# Recording
-widgeteer record start
-# ... interact with app ...
-widgeteer record stop -o recorded.json
-```
-
 ## Common Patterns
 
 ### Wait for element then interact
@@ -221,6 +243,26 @@ server.registerCommand("loadProject", [&app](const QJsonObject& params) {
 ```cpp
 server.registerObject("dataService", &dataService);
 // Then call via: {"command":"call","params":{"object":"dataService","method":"refresh"}}
+```
+
+## Error Handling
+
+```python
+from widgeteer_client import SyncWidgeteerClient, WidgeteerError
+
+with SyncWidgeteerClient(port=9000) as client:
+    result = client.click("@name:button")
+
+    # Check error_code for specific handling
+    if not result.success:
+        if result.error_code == "ELEMENT_NOT_FOUND":
+            print("Button not found")
+
+    # Or use raise_for_error() for exceptions
+    try:
+        client.click("@name:btn").raise_for_error()
+    except WidgeteerError as e:
+        print(f"[{e.code}] {e}")
 ```
 
 ## Error Codes

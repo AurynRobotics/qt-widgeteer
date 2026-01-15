@@ -41,6 +41,22 @@ Response CommandExecutor::execute(const Command& cmd)
   QElapsedTimer timer;
   timer.start();
 
+  // Check if state change tracking is requested
+  bool trackChanges = cmd.options.value("track_changes").toBool(false);
+  QWidget* targetWidget = nullptr;
+  QJsonObject stateBefore;
+
+  // Capture state before action if tracking is enabled
+  if (trackChanges && cmd.params.contains("target"))
+  {
+    QString errorOut;
+    targetWidget = resolveTarget(cmd.params, errorOut);
+    if (targetWidget)
+    {
+      stateBefore = captureWidgetState(targetWidget);
+    }
+  }
+
   QJsonObject result = dispatch(cmd.name, cmd.params);
 
   Response response;
@@ -58,6 +74,17 @@ Response CommandExecutor::execute(const Command& cmd)
   {
     response.success = true;
     response.result = result;
+
+    // Capture state after and compute changes if tracking is enabled
+    if (trackChanges && targetWidget)
+    {
+      QJsonObject stateAfter = captureWidgetState(targetWidget);
+      QJsonArray changes = computeStateChanges(stateBefore, stateAfter);
+      if (!changes.isEmpty())
+      {
+        response.result["changes"] = changes;
+      }
+    }
   }
 
   return response;
@@ -1825,6 +1852,99 @@ QJsonValue CommandExecutor::variantToJson(const QVariant& value)
       }
       return QJsonValue::Null;
   }
+}
+
+QJsonObject CommandExecutor::captureWidgetState(QWidget* widget)
+{
+  QJsonObject state;
+  if (!widget)
+    return state;
+
+  // Capture common properties that might change during actions
+  state["enabled"] = widget->isEnabled();
+  state["visible"] = widget->isVisible();
+
+  // Text content
+  if (auto* label = qobject_cast<QLabel*>(widget))
+  {
+    state["text"] = label->text();
+  }
+  else if (auto* lineEdit = qobject_cast<QLineEdit*>(widget))
+  {
+    state["text"] = lineEdit->text();
+  }
+  else if (auto* textEdit = qobject_cast<QTextEdit*>(widget))
+  {
+    state["text"] = textEdit->toPlainText();
+  }
+  else if (auto* plainTextEdit = qobject_cast<QPlainTextEdit*>(widget))
+  {
+    state["text"] = plainTextEdit->toPlainText();
+  }
+  else if (auto* button = qobject_cast<QAbstractButton*>(widget))
+  {
+    state["text"] = button->text();
+    state["checked"] = button->isChecked();
+  }
+
+  // Numeric values
+  if (auto* spinBox = qobject_cast<QSpinBox*>(widget))
+  {
+    state["value"] = spinBox->value();
+  }
+  else if (auto* doubleSpinBox = qobject_cast<QDoubleSpinBox*>(widget))
+  {
+    state["value"] = doubleSpinBox->value();
+  }
+  else if (auto* slider = qobject_cast<QAbstractSlider*>(widget))
+  {
+    state["value"] = slider->value();
+  }
+  else if (auto* progressBar = qobject_cast<QProgressBar*>(widget))
+  {
+    state["value"] = progressBar->value();
+  }
+
+  // Selection
+  if (auto* comboBox = qobject_cast<QComboBox*>(widget))
+  {
+    state["currentIndex"] = comboBox->currentIndex();
+    state["currentText"] = comboBox->currentText();
+  }
+  else if (auto* tabWidget = qobject_cast<QTabWidget*>(widget))
+  {
+    state["currentIndex"] = tabWidget->currentIndex();
+  }
+  else if (auto* listWidget = qobject_cast<QListWidget*>(widget))
+  {
+    state["currentRow"] = listWidget->currentRow();
+  }
+
+  return state;
+}
+
+QJsonArray CommandExecutor::computeStateChanges(const QJsonObject& before, const QJsonObject& after)
+{
+  QJsonArray changes;
+
+  // Find properties that changed
+  for (auto it = after.constBegin(); it != after.constEnd(); ++it)
+  {
+    const QString& key = it.key();
+    QJsonValue newVal = it.value();
+    QJsonValue oldVal = before.value(key);
+
+    if (oldVal != newVal)
+    {
+      QJsonObject change;
+      change["property"] = key;
+      change["old"] = oldVal;
+      change["new"] = newVal;
+      changes.append(change);
+    }
+  }
+
+  return changes;
 }
 
 }  // namespace widgeteer

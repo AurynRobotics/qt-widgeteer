@@ -108,6 +108,10 @@ private:
   // Convert QVariant to QJsonValue
   static QJsonValue variantToJson(const QVariant& value);
 
+  // Capture widget state for change tracking
+  QJsonObject captureWidgetState(QWidget* widget);
+  QJsonArray computeStateChanges(const QJsonObject& before, const QJsonObject& after);
+
   // Components
   ElementFinder finder_;
   UIIntrospector introspector_;
