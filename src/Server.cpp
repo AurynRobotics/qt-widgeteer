@@ -447,39 +447,75 @@ void Server::handleCommand(QWebSocket* client, const QJsonObject& message)
     qDebug() << "Command:" << cmd.name << "Target:" << cmd.params.value("target").toString();
   }
 
-  Response result;
-  if (QThread::currentThread() == qApp->thread())
-  {
-    result = executor_->execute(cmd);
-  }
-  else
-  {
-    QMetaObject::invokeMethod(
-        qApp, [&]() { result = executor_->execute(cmd); }, Qt::BlockingQueuedConnection);
-  }
+  // Schedule command execution asynchronously.
+  // This allows the handler to return immediately, enabling commands to be
+  // processed even when a blocking dialog (exec()) is open. The nested event
+  // loop from exec() will process subsequent timer events and socket events.
+  QTimer::singleShot(0, this, [this, client, cmd]() {
+    // Check if client is still connected
+    if (!socketToClientId_.contains(client))
+    {
+      if (loggingEnabled_)
+      {
+        qDebug() << "Command" << cmd.name << "skipped: client disconnected";
+      }
+      return;
+    }
 
-  // Record the command if recording
-  if (recorder_->isRecording())
-  {
-    recorder_->recordCommand(cmd, result);
-  }
+    if (loggingEnabled_)
+    {
+      qDebug() << "Executing command:" << cmd.name;
+    }
 
-  // Emit command_executed event if broadcasting is enabled
-  if (broadcaster_->isEnabled() && broadcaster_->hasSubscribers("command_executed"))
-  {
-    QJsonObject eventData;
-    eventData["command"] = cmd.name;
-    eventData["params"] = cmd.params;
-    eventData["success"] = result.success;
-    eventData["duration_ms"] = result.durationMs;
-    broadcaster_->emitEvent("command_executed", eventData);
-  }
+    Response result;
+    if (QThread::currentThread() == qApp->thread())
+    {
+      result = executor_->execute(cmd);
+    }
+    else
+    {
+      QMetaObject::invokeMethod(
+          qApp, [&]() { result = executor_->execute(cmd); }, Qt::BlockingQueuedConnection);
+    }
 
-  emit responseReady(cmd.id, result.success);
+    // Record the command if recording
+    if (recorder_->isRecording())
+    {
+      recorder_->recordCommand(cmd, result);
+    }
 
-  QJsonObject responseJson = result.toJson();
-  responseJson["type"] = messageTypeToString(MessageType::Response);
-  sendResponse(client, responseJson);
+    // Emit command_executed event if broadcasting is enabled
+    if (broadcaster_->isEnabled() && broadcaster_->hasSubscribers("command_executed"))
+    {
+      QJsonObject eventData;
+      eventData["command"] = cmd.name;
+      eventData["params"] = cmd.params;
+      eventData["success"] = result.success;
+      eventData["duration_ms"] = result.durationMs;
+      broadcaster_->emitEvent("command_executed", eventData);
+    }
+
+    emit responseReady(cmd.id, result.success);
+
+    // Check again if client is still connected before sending response
+    if (!socketToClientId_.contains(client))
+    {
+      if (loggingEnabled_)
+      {
+        qDebug() << "Command" << cmd.name << "completed but client disconnected";
+      }
+      return;
+    }
+
+    QJsonObject responseJson = result.toJson();
+    responseJson["type"] = messageTypeToString(MessageType::Response);
+    sendResponse(client, responseJson);
+
+    if (loggingEnabled_)
+    {
+      qDebug() << "Response sent for command:" << cmd.name;
+    }
+  });
 }
 
 void Server::handleSubscribe(QWebSocket* client, const QJsonObject& message)

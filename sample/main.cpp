@@ -95,29 +95,26 @@ private slots:
 
   void onShowDialogClicked()
   {
-    // Use non-blocking dialog for Widgeteer compatibility.
-    // Blocking dialogs (exec()) prevent Widgeteer from processing commands
-    // until the dialog closes. With show(), the event loop continues running
-    // and Widgeteer can interact with the dialog.
-    QMessageBox* msgBox = new QMessageBox(this);
-    msgBox->setObjectName("confirmDialog");
-    msgBox->setWindowTitle("Confirm Action");
-    msgBox->setText("Do you want to proceed with this action?");
-    msgBox->setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
+    // Test blocking dialog with exec().
+    // With async command handling in the Widgeteer server, commands are
+    // scheduled via QTimer::singleShot(0), allowing the nested event loop
+    // from exec() to process subsequent commands.
+    QMessageBox msgBox(this);
+    msgBox.setObjectName("confirmDialog");
+    msgBox.setWindowTitle("Confirm Action");
+    msgBox.setText("Do you want to proceed with this action?");
+    msgBox.setStandardButtons(QMessageBox::Ok | QMessageBox::Cancel);
 
-    connect(msgBox, &QMessageBox::finished, this, [this, msgBox](int result) {
-      if (result == QMessageBox::Ok)
-      {
-        outputText_->append("Dialog: OK was clicked");
-      }
-      else
-      {
-        outputText_->append("Dialog: Cancel was clicked");
-      }
-      msgBox->deleteLater();
-    });
+    int result = msgBox.exec();  // Blocking - starts nested event loop
 
-    msgBox->show();  // Non-blocking
+    if (result == QMessageBox::Ok)
+    {
+      outputText_->append("Dialog: OK was clicked");
+    }
+    else
+    {
+      outputText_->append("Dialog: Cancel was clicked");
+    }
   }
 
   void onSubmitClicked()

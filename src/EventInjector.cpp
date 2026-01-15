@@ -1,7 +1,10 @@
 #include <widgeteer/EventInjector.h>
 
+#include <QAbstractButton>
 #include <QApplication>
+#include <QPointer>
 #include <QTest>
+#include <QTimer>
 
 namespace widgeteer
 {
@@ -19,14 +22,42 @@ EventInjector::Result EventInjector::click(QWidget* target, Qt::MouseButton btn,
   }
 
   QPoint clickPos = resolvePosition(target, pos);
-  QTest::mouseClick(target, btn, mods, clickPos);
 
-  // Note: We intentionally don't call processEvents() here.
-  // The click events are queued and will be processed by the event loop.
-  // This allows clicking buttons that open blocking/modal dialogs -
-  // the response is sent immediately, and the click is processed
-  // by whatever event loop is running (including nested loops from dialogs).
-  // Use wait_idle after click if you need to wait for the click to complete.
+  // Schedule the click to execute AFTER the current command handler completes.
+  // This is critical for supporting blocking dialogs (exec()):
+  // 1. Command handler receives click command
+  // 2. This function schedules click via QTimer::singleShot
+  // 3. Command handler sends response
+  // 4. Event loop continues, timer fires
+  // 5. Click is executed (via QAbstractButton::click() or QTest::mouseClick)
+  // 6. If button opens dialog.exec(), the dialog's nested event loop runs
+  // 7. Subsequent commands can be processed by the nested event loop
+  //
+  // Using a small delay (10ms) ensures this timer fires AFTER the command
+  // handler's timer (0ms) completes and sends the response.
+  QPointer<QWidget> safeTarget = target;
+  QTimer::singleShot(10, [safeTarget, clickPos, btn, mods]() {
+    if (!safeTarget)
+    {
+      return;  // Widget was deleted
+    }
+
+    // For QAbstractButton (QPushButton, QCheckBox, QRadioButton, etc.),
+    // use the native click() method which works reliably in all modes
+    // including offscreen. For other widgets, use QTest::mouseClick.
+    if (btn == Qt::LeftButton &&
+        clickPos == QPoint(safeTarget->width() / 2, safeTarget->height() / 2))
+    {
+      if (auto* abstractButton = qobject_cast<QAbstractButton*>(safeTarget.data()))
+      {
+        abstractButton->click();
+        return;
+      }
+    }
+
+    // For non-button widgets or specific click positions, use mouse events
+    QTest::mouseClick(safeTarget, btn, mods, clickPos);
+  });
 
   result.success = true;
   return result;

@@ -158,6 +158,12 @@
           "params": {
             "target": "@name:enableCheckBox"
           }
+        },
+        {
+          "command": "wait_idle",
+          "params": {
+            "timeout_ms": 500
+          }
         }
       ],
       "assertions": [
@@ -400,6 +406,8 @@
     },
     {
       "name": "Open and close QMessageBox dialog",
+      "description":
+          "Tests interaction with blocking dialog (exec()). Uses sleep instead of wait because wait uses processEvents which blocks when nested inside exec().",
       "steps": [
         {
           "command": "set_value",
@@ -409,9 +417,9 @@
           }
         },
         {
-          "command": "wait_idle",
+          "command": "sleep",
           "params": {
-            "timeout_ms": 500
+            "ms": 100
           }
         },
         {
@@ -421,17 +429,9 @@
           }
         },
         {
-          "command": "wait_idle",
+          "command": "sleep",
           "params": {
-            "timeout_ms": 500
-          }
-        },
-        {
-          "command": "wait",
-          "params": {
-            "target": "@name:confirmDialog",
-            "condition": "visible",
-            "timeout_ms": 2000
+            "ms": 100
           }
         },
         {
@@ -448,11 +448,15 @@
           }
         },
         {
-          "command": "wait",
+          "command": "sleep",
           "params": {
-            "target": "@name:confirmDialog",
-            "condition": "not_exists",
-            "timeout_ms": 2000
+            "ms": 100
+          }
+        },
+        {
+          "command": "exists",
+          "params": {
+            "target": "@name:confirmDialog"
           }
         }
       ]

@@ -397,26 +397,10 @@ QJsonObject CommandExecutor::cmdClick(const QJsonObject& params)
     pos = QPoint(posObj.value("x").toInt(), posObj.value("y").toInt());
   }
 
-  // For QAbstractButton (buttons, checkboxes, radio buttons), use the native click()
-  // method when doing a simple left-click without a specific position, as it's more reliable
-  if (button == Qt::LeftButton && pos.isNull())
-  {
-    if (auto* abstractButton = qobject_cast<QAbstractButton*>(widget))
-    {
-      abstractButton->click();
-      QApplication::processEvents();
-
-      QRect geom = widget->geometry();
-      QJsonObject geometry;
-      geometry["x"] = geom.x();
-      geometry["y"] = geom.y();
-      geometry["width"] = geom.width();
-      geometry["height"] = geom.height();
-
-      return QJsonObject{ { "clicked", true }, { "target_geometry", geometry } };
-    }
-  }
-
+  // Note: We intentionally use EventInjector for all clicks instead of calling
+  // QAbstractButton::click() directly. EventInjector posts mouse events asynchronously,
+  // which is required to support clicking buttons that open blocking dialogs (exec()).
+  // Direct click() would execute synchronously and block until the dialog closes.
   auto result = injector_.click(widget, button, pos);
   if (!result.success)
   {
