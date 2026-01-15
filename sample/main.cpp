@@ -95,7 +95,10 @@ private slots:
 
   void onShowDialogClicked()
   {
-    // Use non-blocking dialog so Widgeteer can still process commands
+    // Use non-blocking dialog for Widgeteer compatibility.
+    // Blocking dialogs (exec()) prevent Widgeteer from processing commands
+    // until the dialog closes. With show(), the event loop continues running
+    // and Widgeteer can interact with the dialog.
     QMessageBox* msgBox = new QMessageBox(this);
     msgBox->setObjectName("confirmDialog");
     msgBox->setWindowTitle("Confirm Action");
@@ -111,10 +114,10 @@ private slots:
       {
         outputText_->append("Dialog: Cancel was clicked");
       }
-      msgBox->deleteLater();  // Safe deletion after event processing
+      msgBox->deleteLater();
     });
 
-    msgBox->show();  // Non-blocking - allows event loop to continue
+    msgBox->show();  // Non-blocking
   }
 
   void onSubmitClicked()

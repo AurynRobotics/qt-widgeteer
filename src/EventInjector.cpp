@@ -21,8 +21,12 @@ EventInjector::Result EventInjector::click(QWidget* target, Qt::MouseButton btn,
   QPoint clickPos = resolvePosition(target, pos);
   QTest::mouseClick(target, btn, mods, clickPos);
 
-  // Process events to ensure the click is fully handled
-  QApplication::processEvents();
+  // Note: We intentionally don't call processEvents() here.
+  // The click events are queued and will be processed by the event loop.
+  // This allows clicking buttons that open blocking/modal dialogs -
+  // the response is sent immediately, and the click is processed
+  // by whatever event loop is running (including nested loops from dialogs).
+  // Use wait_idle after click if you need to wait for the click to complete.
 
   result.success = true;
   return result;

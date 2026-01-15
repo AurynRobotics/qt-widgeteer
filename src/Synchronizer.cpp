@@ -28,6 +28,9 @@ Synchronizer::WaitResult Synchronizer::wait(const WaitParams& params)
 
   while (timer.elapsed() < params.timeoutMs)
   {
+    // Check condition FIRST, before processing any events.
+    // This allows detecting dialogs that are already visible
+    // without triggering new events that might block.
     if (params.condition == Condition::Stable)
     {
       // Special handling for stability - check if geometry hasn't changed
@@ -62,8 +65,11 @@ Synchronizer::WaitResult Synchronizer::wait(const WaitParams& params)
       return result;
     }
 
-    // Process events and wait
-    QApplication::processEvents();
+    // Process events to allow UI updates and network handling.
+    // With async command handling in Server, this won't block even if
+    // a previous click opens a blocking dialog - the dialog's event loop
+    // will process subsequent commands.
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
     QThread::msleep(static_cast<unsigned long>(params.pollIntervalMs));
   }
 
@@ -79,10 +85,10 @@ Synchronizer::WaitResult Synchronizer::waitForIdle(int timeoutMs)
   QElapsedTimer timer;
   timer.start();
 
-  // Process all pending events
+  // Process pending events
   while (timer.elapsed() < timeoutMs)
   {
-    // Process events
+    // Process all events
     QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
 
     // Wait a bit and try again

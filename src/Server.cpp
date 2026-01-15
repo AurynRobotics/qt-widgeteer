@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QSet>
 #include <QThread>
+#include <QTimer>
 #include <QUrlQuery>
 #include <QUuid>
 

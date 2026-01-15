@@ -421,6 +421,12 @@
           }
         },
         {
+          "command": "wait_idle",
+          "params": {
+            "timeout_ms": 500
+          }
+        },
+        {
           "command": "wait",
           "params": {
             "target": "@name:confirmDialog",
