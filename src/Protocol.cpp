@@ -5,6 +5,48 @@
 namespace widgeteer
 {
 
+// MessageType conversion
+QString messageTypeToString(MessageType type)
+{
+  switch (type)
+  {
+    case MessageType::Command:
+      return QStringLiteral("command");
+    case MessageType::Response:
+      return QStringLiteral("response");
+    case MessageType::Event:
+      return QStringLiteral("event");
+    case MessageType::Subscribe:
+      return QStringLiteral("subscribe");
+    case MessageType::Unsubscribe:
+      return QStringLiteral("unsubscribe");
+    case MessageType::RecordStart:
+      return QStringLiteral("record_start");
+    case MessageType::RecordStop:
+      return QStringLiteral("record_stop");
+  }
+  return QStringLiteral("unknown");
+}
+
+std::optional<MessageType> stringToMessageType(const QString& str)
+{
+  if (str == QLatin1String("command"))
+    return MessageType::Command;
+  if (str == QLatin1String("response"))
+    return MessageType::Response;
+  if (str == QLatin1String("event"))
+    return MessageType::Event;
+  if (str == QLatin1String("subscribe"))
+    return MessageType::Subscribe;
+  if (str == QLatin1String("unsubscribe"))
+    return MessageType::Unsubscribe;
+  if (str == QLatin1String("record_start"))
+    return MessageType::RecordStart;
+  if (str == QLatin1String("record_stop"))
+    return MessageType::RecordStop;
+  return std::nullopt;
+}
+
 // Command
 Command Command::fromJson(const QJsonObject& json)
 {

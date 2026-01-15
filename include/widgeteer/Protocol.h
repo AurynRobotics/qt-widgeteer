@@ -6,8 +6,28 @@
 #include <QJsonObject>
 #include <QString>
 
+#include <optional>
+
 namespace widgeteer
 {
+
+// WebSocket message types
+enum class MessageType
+{
+  Command,      // Client -> Server: Execute a command
+  Response,     // Server -> Client: Command result
+  Event,        // Server -> Client: Real-time event
+  Subscribe,    // Client -> Server: Subscribe to events
+  Unsubscribe,  // Client -> Server: Unsubscribe from events
+  RecordStart,  // Client -> Server: Start recording
+  RecordStop    // Client -> Server: Stop recording
+};
+
+// Convert MessageType to string
+WIDGETEER_EXPORT QString messageTypeToString(MessageType type);
+
+// Parse MessageType from string (returns std::nullopt on failure)
+WIDGETEER_EXPORT std::optional<MessageType> stringToMessageType(const QString& str);
 
 // Error codes for the JSON protocol
 namespace ErrorCode

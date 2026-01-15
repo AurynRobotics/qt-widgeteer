@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""
+Widgeteer CLI Tool
+
+A command-line interface for interacting with Widgeteer-enabled Qt applications.
+"""
+
+import argparse
+import asyncio
+import json
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import widgeteer_client
+sys.path.insert(0, str(Path(__file__).parent.parent / "tests"))
+
+from widgeteer_client import WidgeteerClient, SyncWidgeteerClient
+
+
+def create_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="widgeteer",
+        description="CLI for controlling Widgeteer-enabled Qt applications",
+    )
+
+    parser.add_argument(
+        "--host", "-H",
+        default="localhost",
+        help="Server host (default: localhost)"
+    )
+    parser.add_argument(
+        "--port", "-p",
+        type=int,
+        default=9000,
+        help="Server port (default: 9000)"
+    )
+    parser.add_argument(
+        "--token", "-t",
+        help="API key for authentication"
+    )
+    parser.add_argument(
+        "--json", "-j",
+        action="store_true",
+        help="Output as JSON"
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # tree command
+    tree_parser = subparsers.add_parser("tree", help="Get widget tree")
+    tree_parser.add_argument("--root", "-r", help="Root selector")
+    tree_parser.add_argument("--depth", "-d", type=int, default=-1, help="Max depth")
+    tree_parser.add_argument("--invisible", action="store_true", help="Include invisible widgets")
+
+    # find command
+    find_parser = subparsers.add_parser("find", help="Find widgets")
+    find_parser.add_argument("query", help="Search query")
+    find_parser.add_argument("--max", "-m", type=int, default=100, help="Max results")
+    find_parser.add_argument("--visible", action="store_true", help="Visible only")
+
+    # describe command
+    describe_parser = subparsers.add_parser("describe", help="Describe a widget")
+    describe_parser.add_argument("target", help="Widget selector")
+
+    # click command
+    click_parser = subparsers.add_parser("click", help="Click a widget")
+    click_parser.add_argument("target", help="Widget selector")
+    click_parser.add_argument("--button", "-b", choices=["left", "right", "middle"], default="left")
+    click_parser.add_argument("--x", type=int, help="X position within widget")
+    click_parser.add_argument("--y", type=int, help="Y position within widget")
+
+    # double-click command
+    dclick_parser = subparsers.add_parser("double-click", help="Double-click a widget")
+    dclick_parser.add_argument("target", help="Widget selector")
+
+    # right-click command
+    rclick_parser = subparsers.add_parser("right-click", help="Right-click a widget")
+    rclick_parser.add_argument("target", help="Widget selector")
+
+    # type command
+    type_parser = subparsers.add_parser("type", help="Type text into a widget")
+    type_parser.add_argument("target", help="Widget selector")
+    type_parser.add_argument("text", help="Text to type")
+    type_parser.add_argument("--clear", action="store_true", help="Clear existing text first")
+
+    # key command
+    key_parser = subparsers.add_parser("key", help="Press a key")
+    key_parser.add_argument("target", help="Widget selector")
+    key_parser.add_argument("key", help="Key name (e.g., Enter, Escape, Tab)")
+    key_parser.add_argument("--modifiers", "-m", nargs="+", help="Modifiers (ctrl, shift, alt)")
+
+    # key-sequence command
+    keyseq_parser = subparsers.add_parser("key-sequence", help="Press a key sequence")
+    keyseq_parser.add_argument("target", help="Widget selector")
+    keyseq_parser.add_argument("sequence", help="Key sequence (e.g., Ctrl+Shift+S)")
+
+    # get-property command
+    getprop_parser = subparsers.add_parser("get-property", help="Get a property value")
+    getprop_parser.add_argument("target", help="Widget selector")
+    getprop_parser.add_argument("property", help="Property name")
+
+    # set-property command
+    setprop_parser = subparsers.add_parser("set-property", help="Set a property value")
+    setprop_parser.add_argument("target", help="Widget selector")
+    setprop_parser.add_argument("property", help="Property name")
+    setprop_parser.add_argument("value", help="Property value (JSON)")
+
+    # set-value command
+    setval_parser = subparsers.add_parser("set-value", help="Set widget value")
+    setval_parser.add_argument("target", help="Widget selector")
+    setval_parser.add_argument("value", help="Value (JSON)")
+
+    # focus command
+    focus_parser = subparsers.add_parser("focus", help="Set focus to a widget")
+    focus_parser.add_argument("target", help="Widget selector")
+
+    # exists command
+    exists_parser = subparsers.add_parser("exists", help="Check if widget exists")
+    exists_parser.add_argument("target", help="Widget selector")
+
+    # visible command
+    visible_parser = subparsers.add_parser("visible", help="Check if widget is visible")
+    visible_parser.add_argument("target", help="Widget selector")
+
+    # wait command
+    wait_parser = subparsers.add_parser("wait", help="Wait for a condition")
+    wait_parser.add_argument("target", help="Widget selector")
+    wait_parser.add_argument("--condition", "-c", default="exists",
+                             help="Condition (exists, visible, enabled, etc.)")
+    wait_parser.add_argument("--timeout", type=int, default=5000, help="Timeout in ms")
+
+    # screenshot command
+    screenshot_parser = subparsers.add_parser("screenshot", help="Take a screenshot")
+    screenshot_parser.add_argument("--target", help="Widget selector (optional)")
+    screenshot_parser.add_argument("--output", "-o", help="Output file path")
+    screenshot_parser.add_argument("--format", "-f", choices=["png", "jpg"], default="png")
+
+    # record command
+    record_parser = subparsers.add_parser("record", help="Record commands")
+    record_parser.add_argument("action", choices=["start", "stop"], help="Start or stop recording")
+    record_parser.add_argument("--output", "-o", help="Output file for recorded test (on stop)")
+
+    # run command - run test file
+    run_parser = subparsers.add_parser("run", help="Run a test file")
+    run_parser.add_argument("file", help="Test file path (JSON)")
+    run_parser.add_argument("--test", help="Specific test name to run")
+
+    # raw command - send raw JSON command
+    raw_parser = subparsers.add_parser("raw", help="Send raw JSON command")
+    raw_parser.add_argument("command", help="Command name")
+    raw_parser.add_argument("--params", help="Command params (JSON)")
+
+    return parser
+
+
+def parse_json_arg(value: str):
+    """Parse a JSON argument value."""
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError:
+        # Try as string
+        return value
+
+
+async def run_command(args) -> int:
+    """Execute the requested command."""
+    async with WidgeteerClient(args.host, args.port, args.token) as client:
+        resp = None
+
+        if args.command == "tree":
+            resp = await client.tree(
+                root=args.root,
+                depth=args.depth,
+                include_invisible=args.invisible
+            )
+
+        elif args.command == "find":
+            resp = await client.find(args.query, max_results=args.max, visible_only=args.visible)
+
+        elif args.command == "describe":
+            resp = await client.describe(args.target)
+
+        elif args.command == "click":
+            pos = {"x": args.x, "y": args.y} if args.x is not None and args.y is not None else None
+            resp = await client.click(args.target, button=args.button, pos=pos)
+
+        elif args.command == "double-click":
+            resp = await client.double_click(args.target)
+
+        elif args.command == "right-click":
+            resp = await client.right_click(args.target)
+
+        elif args.command == "type":
+            resp = await client.type_text(args.target, args.text, clear_first=args.clear)
+
+        elif args.command == "key":
+            resp = await client.key(args.target, args.key, modifiers=args.modifiers)
+
+        elif args.command == "key-sequence":
+            resp = await client.key_sequence(args.target, args.sequence)
+
+        elif args.command == "get-property":
+            resp = await client.get_property(args.target, args.property)
+
+        elif args.command == "set-property":
+            value = parse_json_arg(args.value)
+            resp = await client.set_property(args.target, args.property, value)
+
+        elif args.command == "set-value":
+            value = parse_json_arg(args.value)
+            resp = await client.set_value(args.target, value)
+
+        elif args.command == "focus":
+            resp = await client.focus(args.target)
+
+        elif args.command == "exists":
+            resp = await client.exists(args.target)
+
+        elif args.command == "visible":
+            resp = await client.is_visible(args.target)
+
+        elif args.command == "wait":
+            resp = await client.wait(args.target, condition=args.condition, timeout_ms=args.timeout)
+
+        elif args.command == "screenshot":
+            resp = await client.screenshot(target=args.target, format=args.format)
+            if resp.success and args.output:
+                import base64
+                image_data = base64.b64decode(resp.data.get("image", ""))
+                with open(args.output, "wb") as f:
+                    f.write(image_data)
+                print(f"Screenshot saved to {args.output}")
+                return 0
+
+        elif args.command == "record":
+            if args.action == "start":
+                resp = await client.start_recording()
+            else:
+                resp = await client.stop_recording()
+                if resp.success and args.output:
+                    with open(args.output, "w") as f:
+                        json.dump(resp.data, f, indent=2)
+                    print(f"Recording saved to {args.output}")
+
+        elif args.command == "run":
+            return await run_test_file(client, args)
+
+        elif args.command == "raw":
+            params = json.loads(args.params) if args.params else {}
+            resp = await client.command(args.command, params)
+
+        if resp is None:
+            print("No command specified. Use --help for usage.")
+            return 1
+
+        # Output result
+        if args.json:
+            output = {
+                "success": resp.success,
+                "data": resp.data,
+                "error": resp.error,
+                "duration_ms": resp.duration_ms
+            }
+            print(json.dumps(output, indent=2))
+        else:
+            if resp.success:
+                if resp.data:
+                    print(json.dumps(resp.data, indent=2))
+                else:
+                    print("OK")
+            else:
+                print(f"Error: {resp.error}", file=sys.stderr)
+                return 1
+
+        return 0 if resp.success else 1
+
+
+async def run_test_file(client: WidgeteerClient, args) -> int:
+    """Run a test file."""
+    with open(args.file) as f:
+        test_suite = json.load(f)
+
+    # Run setup
+    for step in test_suite.get("setup", []):
+        resp = await client.command(step["command"], step.get("params", {}))
+        if not resp.success:
+            print(f"Setup failed: {resp.error}", file=sys.stderr)
+            return 1
+
+    # Run tests
+    tests = test_suite.get("tests", [])
+    if args.test:
+        tests = [t for t in tests if t.get("name") == args.test]
+        if not tests:
+            print(f"Test '{args.test}' not found", file=sys.stderr)
+            return 1
+
+    passed = 0
+    failed = 0
+
+    for test in tests:
+        test_name = test.get("name", "unnamed")
+        print(f"Running: {test_name}")
+
+        test_passed = True
+        for i, step in enumerate(test.get("steps", [])):
+            resp = await client.command(step["command"], step.get("params", {}))
+            if not resp.success:
+                print(f"  Step {i+1} failed: {resp.error}")
+                test_passed = False
+                break
+
+        # Run assertions
+        if test_passed:
+            for i, assertion in enumerate(test.get("assertions", [])):
+                resp = await client.command("assert", assertion)
+                if not resp.success:
+                    print(f"  Assertion {i+1} failed: {resp.error}")
+                    test_passed = False
+                    break
+
+        if test_passed:
+            print(f"  PASSED")
+            passed += 1
+        else:
+            print(f"  FAILED")
+            failed += 1
+
+    # Run teardown
+    for step in test_suite.get("teardown", []):
+        await client.command(step["command"], step.get("params", {}))
+
+    print(f"\nResults: {passed} passed, {failed} failed")
+    return 0 if failed == 0 else 1
+
+
+def main():
+    parser = create_parser()
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    try:
+        return asyncio.run(run_command(args))
+    except KeyboardInterrupt:
+        return 130
+    except ConnectionError as e:
+        print(f"Connection error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

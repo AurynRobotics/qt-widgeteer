@@ -3,24 +3,29 @@
 #include <QApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QRegularExpression>
 #include <QSet>
-#include <QTcpSocket>
 #include <QThread>
 #include <QUrlQuery>
+#include <QUuid>
 
 namespace widgeteer
 {
 
 Server::Server(QObject* parent)
   : QObject(parent)
-  , server_(std::make_unique<QTcpServer>(this))
+  , wsServer_(std::make_unique<QWebSocketServer>(QStringLiteral("Widgeteer"),
+                                                 QWebSocketServer::NonSecureMode, this))
   , executor_(std::make_unique<CommandExecutor>())
+  , recorder_(std::make_unique<ActionRecorder>(this))
+  , broadcaster_(std::make_unique<EventBroadcaster>(this))
 {
   // Default to localhost only
   allowedHosts_ = { "127.0.0.1", "::1", "localhost" };
 
-  connect(server_.get(), &QTcpServer::newConnection, this, &Server::onNewConnection);
+  connect(wsServer_.get(), &QWebSocketServer::newConnection, this, &Server::onNewConnection);
+
+  // Connect event broadcaster to send events to clients
+  connect(broadcaster_.get(), &EventBroadcaster::eventReady, this, &Server::onEventReady);
 }
 
 Server::~Server()
@@ -37,20 +42,20 @@ bool Server::start(quint16 port)
 
   port_ = port;
 
-  if (!server_->listen(QHostAddress::Any, port_))
+  if (!wsServer_->listen(QHostAddress::Any, port_))
   {
     emit serverError(QStringLiteral("Failed to start server on port %1: %2")
                          .arg(port_)
-                         .arg(server_->errorString()));
+                         .arg(wsServer_->errorString()));
     return false;
   }
 
-  port_ = server_->serverPort();
+  port_ = wsServer_->serverPort();
   running_ = true;
 
   if (loggingEnabled_)
   {
-    qDebug() << "Widgeteer server started on port" << port_;
+    qDebug() << "Widgeteer WebSocket server started on port" << port_;
   }
 
   emit serverStarted(port_);
@@ -64,8 +69,18 @@ void Server::stop()
     return;
   }
 
-  server_->close();
-  requestBuffers_.clear();
+  // Close all client connections
+  for (auto it = clients_.begin(); it != clients_.end(); ++it)
+  {
+    if (it.value().socket)
+    {
+      it.value().socket->close();
+    }
+  }
+  clients_.clear();
+  socketToClientId_.clear();
+
+  wsServer_->close();
   running_ = false;
 
   if (loggingEnabled_)
@@ -96,19 +111,66 @@ void Server::setAllowedHosts(const QStringList& hosts)
   allowedHosts_ = hosts;
 }
 
-void Server::enableCORS(bool enable)
-{
-  corsEnabled_ = enable;
-}
-
 void Server::enableLogging(bool enable)
 {
   loggingEnabled_ = enable;
 }
 
+void Server::setApiKey(const QString& apiKey)
+{
+  apiKey_ = apiKey;
+}
+
+QString Server::apiKey() const
+{
+  return apiKey_;
+}
+
 void Server::setRootWidget(QWidget* root)
 {
   rootWidget_ = root;
+}
+
+// ========== Recording API ==========
+
+void Server::startRecording()
+{
+  recorder_->start();
+  if (loggingEnabled_)
+  {
+    qDebug() << "Recording started";
+  }
+}
+
+void Server::stopRecording()
+{
+  recorder_->stop();
+  if (loggingEnabled_)
+  {
+    qDebug() << "Recording stopped, actions recorded:" << recorder_->actionCount();
+  }
+}
+
+bool Server::isRecording() const
+{
+  return recorder_->isRecording();
+}
+
+QJsonObject Server::getRecording() const
+{
+  return recorder_->getRecording();
+}
+
+// ========== Event Broadcasting API ==========
+
+void Server::setEventBroadcastingEnabled(bool enabled)
+{
+  broadcaster_->setEnabled(enabled);
+}
+
+bool Server::isEventBroadcastingEnabled() const
+{
+  return broadcaster_->isEnabled();
 }
 
 // ========== Extensibility API Implementation ==========
@@ -198,452 +260,185 @@ QStringList Server::registeredCommands() const
   return customCommands_.keys();
 }
 
+// ========== WebSocket Connection Handling ==========
+
 void Server::onNewConnection()
 {
-  while (server_->hasPendingConnections())
+  while (wsServer_->hasPendingConnections())
   {
-    QTcpSocket* client = server_->nextPendingConnection();
-    requestBuffers_[client] = QByteArray();
+    QWebSocket* socket = wsServer_->nextPendingConnection();
 
-    connect(client, &QTcpSocket::readyRead, this, &Server::onClientReadyRead);
-    connect(client, &QTcpSocket::disconnected, this, &Server::onClientDisconnected);
+    // Check allowed hosts
+    QString remoteHost = socket->peerAddress().toString();
+    if (!isAllowedHost(remoteHost))
+    {
+      if (loggingEnabled_)
+      {
+        qDebug() << "Rejected connection from disallowed host:" << remoteHost;
+      }
+      socket->close(QWebSocketProtocol::CloseCodePolicyViolated, "Forbidden");
+      socket->deleteLater();
+      continue;
+    }
+
+    // Validate API key if set
+    if (!apiKey_.isEmpty() && !validateApiKey(socket->requestUrl()))
+    {
+      if (loggingEnabled_)
+      {
+        qDebug() << "Rejected connection: Invalid or missing API key";
+      }
+      socket->close(QWebSocketProtocol::CloseCodePolicyViolated, "Unauthorized");
+      socket->deleteLater();
+      continue;
+    }
+
+    // Generate unique client ID
+    QString clientId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+
+    // Store client info
+    ClientInfo info;
+    info.socket = socket;
+    info.id = clientId;
+    info.authenticated = true;
+    clients_[clientId] = info;
+    socketToClientId_[socket] = clientId;
+
+    connect(socket, &QWebSocket::textMessageReceived, this, &Server::onTextMessageReceived);
+    connect(socket, &QWebSocket::disconnected, this, &Server::onClientDisconnected);
+
+    if (loggingEnabled_)
+    {
+      qDebug() << "Client connected:" << clientId << "from" << remoteHost;
+    }
+
+    emit clientConnected(clientId);
   }
 }
 
-void Server::onClientReadyRead()
+void Server::onTextMessageReceived(const QString& message)
 {
-  QTcpSocket* client = qobject_cast<QTcpSocket*>(sender());
-  if (!client)
+  QWebSocket* socket = qobject_cast<QWebSocket*>(sender());
+  if (!socket)
   {
     return;
   }
 
-  requestBuffers_[client].append(client->readAll());
-
-  // Check if we have a complete HTTP request
-  QByteArray& buffer = requestBuffers_[client];
-
-  // Look for end of headers
-  int headerEnd = buffer.indexOf("\r\n\r\n");
-  if (headerEnd == -1)
+  QJsonParseError parseError;
+  QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8(), &parseError);
+  if (parseError.error != QJsonParseError::NoError)
   {
-    return;  // Headers not complete yet
-  }
-
-  // Parse headers to check for Content-Length
-  QString headers = QString::fromUtf8(buffer.left(headerEnd));
-  int contentLength = 0;
-
-  static QRegularExpression contentLengthRegex("Content-Length:\\s*(\\d+)",
-                                               QRegularExpression::CaseInsensitiveOption);
-  QRegularExpressionMatch match = contentLengthRegex.match(headers);
-  if (match.hasMatch())
-  {
-    contentLength = match.captured(1).toInt();
-  }
-
-  // Check if we have the complete body
-  int bodyStart = headerEnd + 4;
-  if (buffer.size() < bodyStart + contentLength)
-  {
-    return;  // Body not complete yet
-  }
-
-  // Check allowed hosts
-  QString remoteHost = client->peerAddress().toString();
-  if (!isAllowedHost(remoteHost))
-  {
-    QByteArray response = buildResponse(403, "Forbidden", R"({"error":"Forbidden"})");
-    client->write(response);
-    client->disconnectFromHost();
+    QJsonObject errorResponse;
+    errorResponse["type"] = messageTypeToString(MessageType::Response);
+    errorResponse["success"] = false;
+    errorResponse["error"] =
+        QJsonObject{ { "code", "PARSE_ERROR" },
+                     { "message",
+                       QStringLiteral("Invalid JSON: %1").arg(parseError.errorString()) } };
+    sendResponse(socket, errorResponse);
     return;
   }
 
-  // Parse and handle request
-  HttpRequest req = parseRequest(buffer);
-  QByteArray responseBody = handleRequest(req);
-
-  // Clear buffer
-  buffer.clear();
-
-  // Send response
-  client->write(responseBody);
-  client->flush();
-  client->disconnectFromHost();
+  handleMessage(socket, doc.object());
 }
 
 void Server::onClientDisconnected()
 {
-  QTcpSocket* client = qobject_cast<QTcpSocket*>(sender());
-  if (client)
+  QWebSocket* socket = qobject_cast<QWebSocket*>(sender());
+  if (!socket)
   {
-    requestBuffers_.remove(client);
-    client->deleteLater();
+    return;
   }
+
+  QString clientId = socketToClientId_.value(socket);
+
+  if (!clientId.isEmpty())
+  {
+    // Remove from event broadcaster subscriptions
+    broadcaster_->removeClient(clientId);
+
+    clients_.remove(clientId);
+    socketToClientId_.remove(socket);
+
+    if (loggingEnabled_)
+    {
+      qDebug() << "Client disconnected:" << clientId;
+    }
+
+    emit clientDisconnected(clientId);
+  }
+
+  socket->deleteLater();
 }
 
-Server::HttpRequest Server::parseRequest(const QByteArray& data)
+void Server::onEventReady(const QString& eventType, const QJsonObject& data,
+                          const QStringList& recipientClientIds)
 {
-  HttpRequest req;
-
-  int headerEnd = data.indexOf("\r\n\r\n");
-  QString headerSection = QString::fromUtf8(data.left(headerEnd));
-  QStringList lines = headerSection.split("\r\n");
-
-  if (lines.isEmpty())
+  for (const QString& clientId : recipientClientIds)
   {
-    return req;
-  }
-
-  // Parse request line: METHOD /path HTTP/1.1
-  QStringList requestLine = lines.first().split(' ');
-  if (requestLine.size() >= 2)
-  {
-    req.method = requestLine[0];
-    QString fullPath = requestLine[1];
-
-    // Parse path and query params
-    int queryStart = fullPath.indexOf('?');
-    if (queryStart != -1)
+    if (clients_.contains(clientId))
     {
-      req.path = fullPath.left(queryStart);
-      QString queryString = fullPath.mid(queryStart + 1);
-      QUrlQuery query(queryString);
-      for (const auto& item : query.queryItems())
+      QWebSocket* socket = clients_[clientId].socket;
+      if (socket)
       {
-        req.queryParams[item.first] = item.second;
+        sendEvent(socket, eventType, data);
       }
     }
-    else
-    {
-      req.path = fullPath;
+  }
+}
+
+// ========== Message Handling ==========
+
+void Server::handleMessage(QWebSocket* client, const QJsonObject& message)
+{
+  QString typeStr = message.value("type").toString();
+  auto type = stringToMessageType(typeStr);
+
+  if (!type.has_value())
+  {
+    QJsonObject errorResponse;
+    errorResponse["type"] = messageTypeToString(MessageType::Response);
+    errorResponse["success"] = false;
+    errorResponse["error"] =
+        QJsonObject{ { "code", "INVALID_TYPE" },
+                     { "message", QStringLiteral("Unknown message type: %1").arg(typeStr) } };
+    sendResponse(client, errorResponse);
+    return;
+  }
+
+  switch (type.value())
+  {
+    case MessageType::Command:
+      handleCommand(client, message);
+      break;
+    case MessageType::Subscribe:
+      handleSubscribe(client, message);
+      break;
+    case MessageType::Unsubscribe:
+      handleUnsubscribe(client, message);
+      break;
+    case MessageType::RecordStart:
+      handleRecordStart(client, message);
+      break;
+    case MessageType::RecordStop:
+      handleRecordStop(client, message);
+      break;
+    default: {
+      QJsonObject errorResponse;
+      errorResponse["type"] = messageTypeToString(MessageType::Response);
+      errorResponse["success"] = false;
+      errorResponse["error"] =
+          QJsonObject{ { "code", "INVALID_TYPE" },
+                       { "message",
+                         QStringLiteral("Cannot handle message type: %1").arg(typeStr) } };
+      sendResponse(client, errorResponse);
     }
   }
-
-  // Parse headers
-  for (int i = 1; i < lines.size(); ++i)
-  {
-    int colonPos = lines[i].indexOf(':');
-    if (colonPos != -1)
-    {
-      QString key = lines[i].left(colonPos).trimmed();
-      QString value = lines[i].mid(colonPos + 1).trimmed();
-      req.headers[key] = value;
-    }
-  }
-
-  // Extract body
-  int bodyStart = headerEnd + 4;
-  if (bodyStart < data.size())
-  {
-    req.body = data.mid(bodyStart);
-  }
-
-  return req;
 }
 
-QByteArray Server::buildResponse(int statusCode, const QString& statusText, const QByteArray& body,
-                                 const QString& contentType)
+void Server::handleCommand(QWebSocket* client, const QJsonObject& message)
 {
-  QByteArray response;
-  response.append(QStringLiteral("HTTP/1.1 %1 %2\r\n").arg(statusCode).arg(statusText).toUtf8());
-  response.append(QStringLiteral("Content-Type: %1\r\n").arg(contentType).toUtf8());
-  response.append(QStringLiteral("Content-Length: %1\r\n").arg(body.size()).toUtf8());
-  response.append("Connection: close\r\n");
-
-  if (corsEnabled_)
-  {
-    response.append("Access-Control-Allow-Origin: *\r\n");
-    response.append("Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n");
-    response.append("Access-Control-Allow-Headers: Content-Type\r\n");
-  }
-
-  response.append("\r\n");
-  response.append(body);
-
-  return response;
-}
-
-QByteArray Server::handleRequest(const HttpRequest& req)
-{
-  if (loggingEnabled_)
-  {
-    qDebug() << "Request:" << req.method << req.path;
-  }
-
-  // Handle CORS preflight
-  if (req.method == "OPTIONS")
-  {
-    return buildResponse(200, "OK", "");
-  }
-
-  // Route requests
-  if (req.path == "/health" && req.method == "GET")
-  {
-    return handleHealth();
-  }
-  if (req.path == "/schema" && req.method == "GET")
-  {
-    return handleSchema();
-  }
-  if (req.path == "/tree" && req.method == "GET")
-  {
-    return handleTree(req);
-  }
-  if (req.path == "/screenshot" && req.method == "GET")
-  {
-    return handleScreenshot(req);
-  }
-  if (req.path == "/command" && req.method == "POST")
-  {
-    return handleCommand(req);
-  }
-  if (req.path == "/transaction" && req.method == "POST")
-  {
-    return handleTransaction(req);
-  }
-
-  return errorResponse("Not Found", 404);
-}
-
-QByteArray Server::handleHealth()
-{
-  QJsonObject response;
-  response["status"] = "ok";
-  response["version"] = "0.1.0";
-
-  return jsonResponse(response);
-}
-
-QByteArray Server::handleSchema()
-{
-  QJsonObject schema;
-
-  // Introspection commands
-  QJsonArray introspection;
-  introspection.append(QJsonObject{
-      { "name", "get_tree" },
-      { "description", "Get the widget tree as JSON" },
-      { "params", QJsonObject{ { "root", "optional target selector" },
-                               { "depth", "max depth (-1 for unlimited)" },
-                               { "include_invisible", "include invisible widgets" },
-                               { "include_geometry", "include geometry info" },
-                               { "include_properties", "include all properties" } } } });
-  introspection.append(
-      QJsonObject{ { "name", "find" },
-                   { "description", "Find widgets matching a query" },
-                   { "params", QJsonObject{ { "query", "selector query" },
-                                            { "max_results", "limit results" } } } });
-  introspection.append(QJsonObject{ { "name", "describe" },
-                                    { "description", "Get detailed info about a widget" },
-                                    { "params", QJsonObject{ { "target", "selector" } } } });
-  introspection.append(QJsonObject{
-      { "name", "get_property" },
-      { "description", "Get a property value" },
-      { "params", QJsonObject{ { "target", "selector" }, { "property", "property name" } } } });
-  introspection.append(QJsonObject{ { "name", "list_properties" },
-                                    { "description", "List all properties of a widget" },
-                                    { "params", QJsonObject{ { "target", "selector" } } } });
-  introspection.append(QJsonObject{ { "name", "get_actions" },
-                                    { "description", "List available actions/slots" },
-                                    { "params", QJsonObject{ { "target", "selector" } } } });
-  schema["introspection"] = introspection;
-
-  // Action commands
-  QJsonArray actions;
-  actions.append(
-      QJsonObject{ { "name", "click" },
-                   { "description", "Click on a widget" },
-                   { "params", QJsonObject{ { "target", "selector" },
-                                            { "button", "left/right/middle (default: left)" },
-                                            { "pos", "optional {x, y} within widget" } } } });
-  actions.append(QJsonObject{ { "name", "double_click" },
-                              { "description", "Double-click on a widget" },
-                              { "params", QJsonObject{ { "target", "selector" } } } });
-  actions.append(QJsonObject{ { "name", "right_click" },
-                              { "description", "Right-click on a widget" },
-                              { "params", QJsonObject{ { "target", "selector" } } } });
-  actions.append(QJsonObject{
-      { "name", "type" },
-      { "description", "Type text into a widget" },
-      { "params",
-        QJsonObject{ { "target", "selector" },
-                     { "text", "text to type" },
-                     { "clear_first", "clear existing text first (default: false)" } } } });
-  actions.append(QJsonObject{
-      { "name", "key" },
-      { "description", "Press a single key" },
-      { "params",
-        QJsonObject{ { "target", "selector" },
-                     { "key", "key name (e.g., 'Enter', 'Escape', 'Tab')" },
-                     { "modifiers", "array of modifiers ['ctrl', 'shift', 'alt']" } } } });
-  actions.append(
-      QJsonObject{ { "name", "key_sequence" },
-                   { "description", "Press a key sequence" },
-                   { "params", QJsonObject{ { "target", "selector" },
-                                            { "sequence", "e.g., 'Ctrl+Shift+S'" } } } });
-  actions.append(QJsonObject{ { "name", "drag" },
-                              { "description", "Drag from one widget to another" },
-                              { "params", QJsonObject{ { "from", "source selector" },
-                                                       { "to", "destination selector" },
-                                                       { "from_pos", "optional start position" },
-                                                       { "to_pos", "optional end position" } } } });
-  actions.append(QJsonObject{ { "name", "scroll" },
-                              { "description", "Scroll a widget" },
-                              { "params", QJsonObject{ { "target", "selector" },
-                                                       { "delta_x", "horizontal" },
-                                                       { "delta_y", "vertical" } } } });
-  actions.append(QJsonObject{ { "name", "hover" },
-                              { "description", "Move mouse over widget" },
-                              { "params", QJsonObject{ { "target", "selector" } } } });
-  actions.append(QJsonObject{ { "name", "focus" },
-                              { "description", "Set keyboard focus" },
-                              { "params", QJsonObject{ { "target", "selector" } } } });
-  schema["actions"] = actions;
-
-  // State commands
-  QJsonArray state;
-  state.append(QJsonObject{ { "name", "set_property" },
-                            { "description", "Set a property value" },
-                            { "params", QJsonObject{ { "target", "selector" },
-                                                     { "property", "property name" },
-                                                     { "value", "new value" } } } });
-  state.append(QJsonObject{
-      { "name", "invoke" },
-      { "description", "Invoke a method/slot" },
-      { "params", QJsonObject{ { "target", "selector" }, { "method", "method name" } } } });
-  state.append(QJsonObject{
-      { "name", "set_value" },
-      { "description", "Smart value setter for common widgets" },
-      { "params", QJsonObject{ { "target", "selector" }, { "value", "value to set" } } } });
-  schema["state"] = state;
-
-  // Verification commands
-  QJsonArray verification;
-  verification.append(QJsonObject{
-      { "name", "screenshot" },
-      { "description", "Capture screenshot" },
-      { "params", QJsonObject{ { "target", "optional selector" }, { "format", "png or jpg" } } } });
-  verification.append(
-      QJsonObject{ { "name", "assert" },
-                   { "description", "Assert a property condition" },
-                   { "params", QJsonObject{ { "target", "selector" },
-                                            { "property", "property name" },
-                                            { "operator", "==, !=, >, <, >=, <=, contains" },
-                                            { "value", "expected value" } } } });
-  verification.append(QJsonObject{ { "name", "exists" },
-                                   { "description", "Check if element exists" },
-                                   { "params", QJsonObject{ { "target", "selector" } } } });
-  verification.append(QJsonObject{ { "name", "is_visible" },
-                                   { "description", "Check if element is visible" },
-                                   { "params", QJsonObject{ { "target", "selector" } } } });
-  schema["verification"] = verification;
-
-  // Synchronization commands
-  QJsonArray sync;
-  sync.append(QJsonObject{
-      { "name", "wait" },
-      { "description", "Wait for a condition" },
-      { "params",
-        QJsonObject{ { "target", "selector" },
-                     { "condition", "exists, not_exists, visible, not_visible, enabled, disabled, "
-                                    "stable, property:name=value" },
-                     { "timeout_ms", "timeout in milliseconds (default: 5000)" } } } });
-  sync.append(QJsonObject{ { "name", "wait_idle" },
-                           { "description", "Wait for Qt event queue to be empty" },
-                           { "params", QJsonObject{ { "timeout_ms", "timeout" } } } });
-  sync.append(QJsonObject{ { "name", "wait_signal" },
-                           { "description", "Wait for a Qt signal" },
-                           { "params", QJsonObject{ { "target", "selector" },
-                                                    { "signal", "signal signature" },
-                                                    { "timeout_ms", "timeout" } } } });
-  sync.append(QJsonObject{ { "name", "sleep" },
-                           { "description", "Hard delay" },
-                           { "params", QJsonObject{ { "ms", "milliseconds" } } } });
-  schema["synchronization"] = sync;
-
-  // Selector syntax
-  QJsonObject selectors;
-  selectors["path"] = "parent/child/grandchild - slash-separated path";
-  selectors["@name:"] = "@name:objectName - by objectName";
-  selectors["@class:"] = "@class:QPushButton - by class name";
-  selectors["@text:"] = "@text:OK - by text content";
-  selectors["@accessible:"] = "@accessible:Name - by accessible name";
-  selectors["index"] = "parent/child[0] - index for duplicates";
-  selectors["wildcard"] = "parent/*/child - wildcard matching";
-  schema["selectors"] = selectors;
-
-  return jsonResponse(schema);
-}
-
-QByteArray Server::handleTree(const HttpRequest& req)
-{
-  emit requestReceived("tree", "get_tree");
-
-  QJsonObject params;
-  if (req.queryParams.contains("root"))
-  {
-    params["root"] = req.queryParams.value("root");
-  }
-  if (req.queryParams.contains("depth"))
-  {
-    params["depth"] = req.queryParams.value("depth").toInt();
-  }
-  if (req.queryParams.contains("include_invisible"))
-  {
-    params["include_invisible"] = req.queryParams.value("include_invisible") == "true";
-  }
-
-  Command cmd;
-  cmd.id = "tree";
-  cmd.name = "get_tree";
-  cmd.params = params;
-
-  QJsonObject result =
-      executeOnMainThread([this, &cmd]() { return executor_->execute(cmd).toJson(); });
-
-  emit responseReady("tree", result.value("success").toBool(true));
-
-  return jsonResponse(result);
-}
-
-QByteArray Server::handleScreenshot(const HttpRequest& req)
-{
-  emit requestReceived("screenshot", "screenshot");
-
-  QJsonObject params;
-  if (req.queryParams.contains("target"))
-  {
-    params["target"] = req.queryParams.value("target");
-  }
-  if (req.queryParams.contains("format"))
-  {
-    params["format"] = req.queryParams.value("format");
-  }
-
-  Command cmd;
-  cmd.id = "screenshot";
-  cmd.name = "screenshot";
-  cmd.params = params;
-
-  QJsonObject result =
-      executeOnMainThread([this, &cmd]() { return executor_->execute(cmd).toJson(); });
-
-  emit responseReady("screenshot", result.value("success").toBool(true));
-
-  return jsonResponse(result);
-}
-
-QByteArray Server::handleCommand(const HttpRequest& req)
-{
-  QJsonParseError parseError;
-  QJsonDocument doc = QJsonDocument::fromJson(req.body, &parseError);
-  if (parseError.error != QJsonParseError::NoError)
-  {
-    return errorResponse(QStringLiteral("Invalid JSON: %1").arg(parseError.errorString()), 400);
-  }
-
-  Command cmd = Command::fromJson(doc.object());
+  Command cmd = Command::fromJson(message);
   emit requestReceived(cmd.id, cmd.name);
 
   if (loggingEnabled_)
@@ -651,56 +446,157 @@ QByteArray Server::handleCommand(const HttpRequest& req)
     qDebug() << "Command:" << cmd.name << "Target:" << cmd.params.value("target").toString();
   }
 
-  QJsonObject result =
-      executeOnMainThread([this, &cmd]() { return executor_->execute(cmd).toJson(); });
-
-  emit responseReady(cmd.id, result.value("success").toBool(false));
-
-  return jsonResponse(result);
-}
-
-QByteArray Server::handleTransaction(const HttpRequest& req)
-{
-  QJsonParseError parseError;
-  QJsonDocument doc = QJsonDocument::fromJson(req.body, &parseError);
-  if (parseError.error != QJsonParseError::NoError)
-  {
-    return errorResponse(QStringLiteral("Invalid JSON: %1").arg(parseError.errorString()), 400);
-  }
-
-  Transaction tx = Transaction::fromJson(doc.object());
-  emit requestReceived(tx.id, "transaction");
-
-  if (loggingEnabled_)
-  {
-    qDebug() << "Transaction:" << tx.id << "Steps:" << tx.steps.size();
-  }
-
-  QJsonObject result =
-      executeOnMainThread([this, &tx]() { return executor_->execute(tx).toJson(); });
-
-  emit responseReady(tx.id, result.value("success").toBool(false));
-
-  return jsonResponse(result);
-}
-
-template <typename Func>
-QJsonObject Server::executeOnMainThread(Func&& func)
-{
-  QJsonObject result;
-
+  Response result;
   if (QThread::currentThread() == qApp->thread())
   {
-    result = func();
+    result = executor_->execute(cmd);
   }
   else
   {
     QMetaObject::invokeMethod(
-        qApp, [&]() { result = func(); }, Qt::BlockingQueuedConnection);
+        qApp, [&]() { result = executor_->execute(cmd); }, Qt::BlockingQueuedConnection);
   }
 
-  return result;
+  // Record the command if recording
+  if (recorder_->isRecording())
+  {
+    recorder_->recordCommand(cmd, result);
+  }
+
+  // Emit command_executed event if broadcasting is enabled
+  if (broadcaster_->isEnabled() && broadcaster_->hasSubscribers("command_executed"))
+  {
+    QJsonObject eventData;
+    eventData["command"] = cmd.name;
+    eventData["params"] = cmd.params;
+    eventData["success"] = result.success;
+    eventData["duration_ms"] = result.durationMs;
+    broadcaster_->emitEvent("command_executed", eventData);
+  }
+
+  emit responseReady(cmd.id, result.success);
+
+  QJsonObject responseJson = result.toJson();
+  responseJson["type"] = messageTypeToString(MessageType::Response);
+  sendResponse(client, responseJson);
 }
+
+void Server::handleSubscribe(QWebSocket* client, const QJsonObject& message)
+{
+  QString clientId = clientIdForSocket(client);
+  QString eventType = message.value("event_type").toString();
+
+  if (eventType.isEmpty())
+  {
+    QJsonObject errorResponse;
+    errorResponse["type"] = messageTypeToString(MessageType::Response);
+    errorResponse["id"] = message.value("id").toString();
+    errorResponse["success"] = false;
+    errorResponse["error"] =
+        QJsonObject{ { "code", "MISSING_PARAM" }, { "message", "Missing event_type parameter" } };
+    sendResponse(client, errorResponse);
+    return;
+  }
+
+  broadcaster_->subscribe(clientId, eventType);
+
+  if (loggingEnabled_)
+  {
+    qDebug() << "Client" << clientId << "subscribed to" << eventType;
+  }
+
+  QJsonObject response;
+  response["type"] = messageTypeToString(MessageType::Response);
+  response["id"] = message.value("id").toString();
+  response["success"] = true;
+  response["result"] = QJsonObject{ { "subscribed", eventType } };
+  sendResponse(client, response);
+}
+
+void Server::handleUnsubscribe(QWebSocket* client, const QJsonObject& message)
+{
+  QString clientId = clientIdForSocket(client);
+  QString eventType = message.value("event_type").toString();
+
+  if (eventType.isEmpty())
+  {
+    broadcaster_->unsubscribeAll(clientId);
+    if (loggingEnabled_)
+    {
+      qDebug() << "Client" << clientId << "unsubscribed from all events";
+    }
+  }
+  else
+  {
+    broadcaster_->unsubscribe(clientId, eventType);
+    if (loggingEnabled_)
+    {
+      qDebug() << "Client" << clientId << "unsubscribed from" << eventType;
+    }
+  }
+
+  QJsonObject response;
+  response["type"] = messageTypeToString(MessageType::Response);
+  response["id"] = message.value("id").toString();
+  response["success"] = true;
+  response["result"] = QJsonObject{ { "unsubscribed", eventType.isEmpty() ? "all" : eventType } };
+  sendResponse(client, response);
+}
+
+void Server::handleRecordStart(QWebSocket* client, const QJsonObject& message)
+{
+  startRecording();
+
+  QJsonObject response;
+  response["type"] = messageTypeToString(MessageType::Response);
+  response["id"] = message.value("id").toString();
+  response["success"] = true;
+  response["result"] = QJsonObject{ { "recording", true } };
+  sendResponse(client, response);
+}
+
+void Server::handleRecordStop(QWebSocket* client, const QJsonObject& message)
+{
+  stopRecording();
+
+  QJsonObject response;
+  response["type"] = messageTypeToString(MessageType::Response);
+  response["id"] = message.value("id").toString();
+  response["success"] = true;
+  response["result"] = getRecording();
+  sendResponse(client, response);
+}
+
+// ========== Response/Event Sending ==========
+
+void Server::sendResponse(QWebSocket* client, const QJsonObject& response)
+{
+  if (!client)
+  {
+    return;
+  }
+
+  QByteArray data = QJsonDocument(response).toJson(QJsonDocument::Compact);
+  client->sendTextMessage(QString::fromUtf8(data));
+}
+
+void Server::sendEvent(QWebSocket* client, const QString& eventType, const QJsonObject& data)
+{
+  if (!client)
+  {
+    return;
+  }
+
+  QJsonObject event;
+  event["type"] = messageTypeToString(MessageType::Event);
+  event["event_type"] = eventType;
+  event["data"] = data;
+
+  QByteArray eventData = QJsonDocument(event).toJson(QJsonDocument::Compact);
+  client->sendTextMessage(QString::fromUtf8(eventData));
+}
+
+// ========== Utility Functions ==========
 
 bool Server::isAllowedHost(const QString& remoteHost) const
 {
@@ -720,18 +616,22 @@ bool Server::isAllowedHost(const QString& remoteHost) const
   return allowedHosts_.contains(host);
 }
 
-QByteArray Server::jsonResponse(const QJsonObject& json, int statusCode)
+bool Server::validateApiKey(const QUrl& requestUrl) const
 {
-  QByteArray body = QJsonDocument(json).toJson(QJsonDocument::Compact);
-  QString statusText = statusCode == 200 ? "OK" : "Error";
-  return buildResponse(statusCode, statusText, body);
+  if (apiKey_.isEmpty())
+  {
+    return true;  // No API key required
+  }
+
+  QUrlQuery query(requestUrl.query());
+  QString token = query.queryItemValue("token");
+
+  return token == apiKey_;
 }
 
-QByteArray Server::errorResponse(const QString& message, int statusCode)
+QString Server::clientIdForSocket(QWebSocket* socket) const
 {
-  QJsonObject error;
-  error["error"] = message;
-  return jsonResponse(error, statusCode);
+  return socketToClientId_.value(socket);
 }
 
 }  // namespace widgeteer

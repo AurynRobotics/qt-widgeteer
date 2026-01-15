@@ -4,17 +4,30 @@
 #include <QAbstractSlider>
 #include <QApplication>
 #include <QBuffer>
+#include <QCalendarWidget>
 #include <QComboBox>
+#include <QDateEdit>
+#include <QDateTimeEdit>
+#include <QDial>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
+#include <QGroupBox>
 #include <QImage>
+#include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMetaMethod>
+#include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QScreen>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QTabWidget>
+#include <QTableWidget>
 #include <QTextEdit>
 #include <QThread>
+#include <QTimeEdit>
+#include <QTreeWidget>
 
 namespace widgeteer
 {
@@ -952,6 +965,189 @@ QJsonObject CommandExecutor::cmdSetValue(const QJsonObject& params)
   {
     textEdit->setPlainText(value.toString());
     return QJsonObject{ { "value_set", true } };
+  }
+
+  if (auto* plainTextEdit = qobject_cast<QPlainTextEdit*>(widget))
+  {
+    plainTextEdit->setPlainText(value.toString());
+    return QJsonObject{ { "value_set", true } };
+  }
+
+  if (auto* dateTimeEdit = qobject_cast<QDateTimeEdit*>(widget))
+  {
+    // Try parsing as ISO datetime first, then date, then time
+    QString str = value.toString();
+    QDateTime dt = QDateTime::fromString(str, Qt::ISODate);
+    if (dt.isValid())
+    {
+      dateTimeEdit->setDateTime(dt);
+    }
+    else
+    {
+      QDate d = QDate::fromString(str, Qt::ISODate);
+      if (d.isValid())
+      {
+        dateTimeEdit->setDate(d);
+      }
+      else
+      {
+        QTime t = QTime::fromString(str, Qt::ISODate);
+        if (t.isValid())
+        {
+          dateTimeEdit->setTime(t);
+        }
+        else
+        {
+          QJsonObject error;
+          error["code"] = ErrorCode::InvalidParams;
+          error["message"] = "Invalid date/time format. Use ISO format (YYYY-MM-DD, HH:MM:SS, or "
+                             "YYYY-MM-DDTHH:MM:SS)";
+          return QJsonObject{ { "error", error } };
+        }
+      }
+    }
+    return QJsonObject{ { "value_set", true } };
+  }
+
+  if (auto* progressBar = qobject_cast<QProgressBar*>(widget))
+  {
+    progressBar->setValue(value.toInt());
+    return QJsonObject{ { "value_set", true } };
+  }
+
+  if (auto* dial = qobject_cast<QDial*>(widget))
+  {
+    dial->setValue(value.toInt());
+    return QJsonObject{ { "value_set", true } };
+  }
+
+  if (auto* label = qobject_cast<QLabel*>(widget))
+  {
+    if (value.isDouble())
+    {
+      label->setNum(value.toDouble());
+    }
+    else
+    {
+      label->setText(value.toString());
+    }
+    return QJsonObject{ { "value_set", true } };
+  }
+
+  if (auto* groupBox = qobject_cast<QGroupBox*>(widget))
+  {
+    if (groupBox->isCheckable())
+    {
+      groupBox->setChecked(value.toBool());
+      return QJsonObject{ { "value_set", true } };
+    }
+  }
+
+  if (auto* stackedWidget = qobject_cast<QStackedWidget*>(widget))
+  {
+    stackedWidget->setCurrentIndex(value.toInt());
+    return QJsonObject{ { "value_set", true } };
+  }
+
+  if (auto* calendarWidget = qobject_cast<QCalendarWidget*>(widget))
+  {
+    QString str = value.toString();
+    QDate d = QDate::fromString(str, Qt::ISODate);
+    if (d.isValid())
+    {
+      calendarWidget->setSelectedDate(d);
+      return QJsonObject{ { "value_set", true } };
+    }
+    else
+    {
+      QJsonObject error;
+      error["code"] = ErrorCode::InvalidParams;
+      error["message"] = "Invalid date format. Use ISO format (YYYY-MM-DD)";
+      return QJsonObject{ { "error", error } };
+    }
+  }
+
+  if (auto* listWidget = qobject_cast<QListWidget*>(widget))
+  {
+    // Value can be index (int) or text (string)
+    if (value.isDouble())
+    {
+      int row = value.toInt();
+      if (row >= 0 && row < listWidget->count())
+      {
+        listWidget->setCurrentRow(row);
+        return QJsonObject{ { "value_set", true } };
+      }
+    }
+    else
+    {
+      QString text = value.toString();
+      QList<QListWidgetItem*> items = listWidget->findItems(text, Qt::MatchExactly);
+      if (!items.isEmpty())
+      {
+        listWidget->setCurrentItem(items.first());
+        return QJsonObject{ { "value_set", true } };
+      }
+    }
+    QJsonObject error;
+    error["code"] = ErrorCode::InvalidParams;
+    error["message"] = "Item not found in list";
+    return QJsonObject{ { "error", error } };
+  }
+
+  if (auto* treeWidget = qobject_cast<QTreeWidget*>(widget))
+  {
+    // Value can be text (search in first column) or object with row/column indices
+    if (value.isString())
+    {
+      QString text = value.toString();
+      QList<QTreeWidgetItem*> items =
+          treeWidget->findItems(text, Qt::MatchExactly | Qt::MatchRecursive);
+      if (!items.isEmpty())
+      {
+        treeWidget->setCurrentItem(items.first());
+        return QJsonObject{ { "value_set", true } };
+      }
+      QJsonObject error;
+      error["code"] = ErrorCode::InvalidParams;
+      error["message"] = "Item not found in tree";
+      return QJsonObject{ { "error", error } };
+    }
+  }
+
+  if (auto* tableWidget = qobject_cast<QTableWidget*>(widget))
+  {
+    // Value should be object with "row" and "column" or "text"
+    if (value.isObject())
+    {
+      QJsonObject obj = value.toObject();
+      if (obj.contains("row") && obj.contains("column"))
+      {
+        int row = obj.value("row").toInt();
+        int col = obj.value("column").toInt();
+        if (row >= 0 && row < tableWidget->rowCount() && col >= 0 &&
+            col < tableWidget->columnCount())
+        {
+          tableWidget->setCurrentCell(row, col);
+          return QJsonObject{ { "value_set", true } };
+        }
+      }
+      if (obj.contains("text"))
+      {
+        QString text = obj.value("text").toString();
+        QList<QTableWidgetItem*> items = tableWidget->findItems(text, Qt::MatchExactly);
+        if (!items.isEmpty())
+        {
+          tableWidget->setCurrentItem(items.first());
+          return QJsonObject{ { "value_set", true } };
+        }
+      }
+    }
+    QJsonObject error;
+    error["code"] = ErrorCode::InvalidParams;
+    error["message"] =
+        "Invalid value for table. Use {\"row\": n, \"column\": m} or {\"text\": \"value\"}";
+    return QJsonObject{ { "error", error } };
   }
 
   QJsonObject error;

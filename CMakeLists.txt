@@ -22,7 +22,7 @@ elseif(MSVC)
 endif()
 
 # Find Qt6
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui Test Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui Test Network WebSockets)
 
 # Enable Qt MOC/UIC/RCC
 set(CMAKE_AUTOMOC ON)
@@ -37,6 +37,8 @@ set(WIDGETEER_SOURCES
   src/EventInjector.cpp
   src/Synchronizer.cpp
   src/CommandExecutor.cpp
+  src/ActionRecorder.cpp
+  src/EventBroadcaster.cpp
   src/Server.cpp
 )
 
@@ -48,6 +50,8 @@ set(WIDGETEER_HEADERS
   include/widgeteer/EventInjector.h
   include/widgeteer/Synchronizer.h
   include/widgeteer/CommandExecutor.h
+  include/widgeteer/ActionRecorder.h
+  include/widgeteer/EventBroadcaster.h
   include/widgeteer/Server.h
 )
 
@@ -65,12 +69,20 @@ target_link_libraries(widgeteer PUBLIC
   Qt6::Gui
   Qt6::Test
   Qt6::Network
+  Qt6::WebSockets
 )
 
 # Build sample application
 option(WIDGETEER_BUILD_SAMPLE "Build sample application" ON)
 if(WIDGETEER_BUILD_SAMPLE)
   add_subdirectory(sample)
+endif()
+
+# Build tests
+option(WIDGETEER_BUILD_TESTS "Build unit tests" ON)
+if(WIDGETEER_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests/cpp)
 endif()
 
 # Install targets

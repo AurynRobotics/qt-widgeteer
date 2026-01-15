@@ -2,14 +2,22 @@
 """
 Widgeteer Python Client
 
-A reusable client for interacting with Widgeteer-enabled Qt applications.
+A reusable client for interacting with Widgeteer-enabled Qt applications
+using WebSocket communication.
 """
 
+import asyncio
 import json
-import urllib.request
-import urllib.error
-from dataclasses import dataclass
-from typing import Any
+import uuid
+from dataclasses import dataclass, field
+from typing import Any, Callable
+from urllib.parse import urlencode
+
+try:
+    import websockets
+    from websockets.asyncio.client import connect as ws_connect
+except ImportError:
+    websockets = None
 
 
 @dataclass
@@ -18,258 +26,475 @@ class Response:
     success: bool
     data: dict
     error: str | None = None
+    duration_ms: int = 0
+
+
+@dataclass
+class Event:
+    """Event from Widgeteer server."""
+    event_type: str
+    data: dict
 
 
 class WidgeteerClient:
-    """Client for Widgeteer HTTP API."""
+    """Async client for Widgeteer WebSocket API."""
 
-    def __init__(self, host: str = "localhost", port: int = 9000, timeout: float = 30.0):
-        self.base_url = f"http://{host}:{port}"
-        self.timeout = timeout
+    def __init__(self, host: str = "localhost", port: int = 9000, token: str | None = None):
+        if websockets is None:
+            raise ImportError("websockets package required. Install with: pip install websockets")
 
-    def _request(self, method: str, path: str, data: dict | None = None) -> Response:
-        """Make an HTTP request to the server."""
-        url = f"{self.base_url}{path}"
+        self.host = host
+        self.port = port
+        self.token = token
+        self._ws = None
+        self._pending: dict[str, asyncio.Future] = {}
+        self._event_handlers: dict[str, list[Callable]] = {}
+        self._receive_task = None
 
-        headers = {"Content-Type": "application/json"}
-        body = json.dumps(data).encode() if data else None
+    @property
+    def ws_url(self) -> str:
+        """Build WebSocket URL with optional token."""
+        url = f"ws://{self.host}:{self.port}"
+        if self.token:
+            url += "?" + urlencode({"token": self.token})
+        return url
 
-        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    async def connect(self) -> None:
+        """Connect to the WebSocket server."""
+        self._ws = await ws_connect(self.ws_url)
+        self._receive_task = asyncio.create_task(self._receive_loop())
+
+    async def disconnect(self) -> None:
+        """Disconnect from the server."""
+        if self._receive_task:
+            self._receive_task.cancel()
+            try:
+                await self._receive_task
+            except asyncio.CancelledError:
+                pass
+        if self._ws:
+            await self._ws.close()
+            self._ws = None
+
+    async def _receive_loop(self) -> None:
+        """Background task to receive messages."""
+        try:
+            async for message in self._ws:
+                data = json.loads(message)
+                msg_type = data.get("type")
+
+                if msg_type == "response":
+                    # Match response to pending request
+                    msg_id = data.get("id")
+                    if msg_id in self._pending:
+                        self._pending[msg_id].set_result(data)
+
+                elif msg_type == "event":
+                    # Dispatch to event handlers
+                    event_type = data.get("event_type")
+                    event_data = data.get("data", {})
+                    if event_type in self._event_handlers:
+                        for handler in self._event_handlers[event_type]:
+                            try:
+                                if asyncio.iscoroutinefunction(handler):
+                                    await handler(Event(event_type, event_data))
+                                else:
+                                    handler(Event(event_type, event_data))
+                            except Exception as e:
+                                print(f"Event handler error: {e}")
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"Receive loop error: {e}")
+
+    async def _send_and_wait(self, message: dict, timeout: float = 30.0) -> dict:
+        """Send a message and wait for response."""
+        if not self._ws:
+            raise ConnectionError("Not connected to server")
+
+        msg_id = message.get("id") or str(uuid.uuid4())
+        message["id"] = msg_id
+
+        future = asyncio.get_event_loop().create_future()
+        self._pending[msg_id] = future
 
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                result = json.loads(resp.read().decode())
-                return Response(
-                    success=result.get("success", True),
-                    data=result,
-                    error=result.get("error", {}).get("message") if not result.get("success", True) else None
-                )
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode()
-            try:
-                error_data = json.loads(error_body)
-            except json.JSONDecodeError:
-                error_data = {"error": error_body}
-            return Response(success=False, data=error_data, error=error_data.get("error"))
-        except urllib.error.URLError as e:
-            return Response(success=False, data={}, error=str(e.reason))
-        except Exception as e:
-            return Response(success=False, data={}, error=str(e))
+            await self._ws.send(json.dumps(message))
+            result = await asyncio.wait_for(future, timeout=timeout)
+            return result
+        finally:
+            self._pending.pop(msg_id, None)
 
-    def health(self) -> Response:
-        """Check server health."""
-        return self._request("GET", "/health")
-
-    def schema(self) -> Response:
-        """Get command schema."""
-        return self._request("GET", "/schema")
-
-    def tree(self, root: str | None = None, depth: int = -1,
-             include_invisible: bool = False) -> Response:
-        """Get widget tree."""
-        params = []
-        if root:
-            params.append(f"root={root}")
-        if depth >= 0:
-            params.append(f"depth={depth}")
-        if include_invisible:
-            params.append("include_invisible=true")
-
-        path = "/tree"
-        if params:
-            path += "?" + "&".join(params)
-
-        return self._request("GET", path)
-
-    def screenshot(self, target: str | None = None, format: str = "png") -> Response:
-        """Capture screenshot."""
-        params = [f"format={format}"]
-        if target:
-            params.append(f"target={target}")
-
-        path = "/screenshot?" + "&".join(params)
-        return self._request("GET", path)
-
-    def command(self, cmd: str, params: dict | None = None,
-                options: dict | None = None, cmd_id: str | None = None) -> Response:
+    async def command(self, cmd: str, params: dict | None = None,
+                      options: dict | None = None, cmd_id: str | None = None,
+                      timeout: float = 30.0) -> Response:
         """Execute a single command."""
-        data = {
-            "id": cmd_id or f"cmd-{id(params)}",
+        message = {
+            "type": "command",
+            "id": cmd_id or str(uuid.uuid4()),
             "command": cmd,
             "params": params or {},
         }
         if options:
-            data["options"] = options
+            message["options"] = options
 
-        return self._request("POST", "/command", data)
+        result = await self._send_and_wait(message, timeout)
 
-    def transaction(self, steps: list[dict], tx_id: str | None = None,
-                    rollback_on_failure: bool = True) -> Response:
-        """Execute a transaction (multiple commands)."""
-        data = {
-            "id": tx_id or f"tx-{id(steps)}",
-            "transaction": True,
-            "rollback_on_failure": rollback_on_failure,
-            "steps": steps,
+        return Response(
+            success=result.get("success", False),
+            data=result.get("result", {}),
+            error=result.get("error", {}).get("message") if not result.get("success") else None,
+            duration_ms=result.get("duration_ms", 0)
+        )
+
+    # ========== Event Subscriptions ==========
+
+    async def subscribe(self, event_type: str, handler: Callable[[Event], None]) -> Response:
+        """Subscribe to an event type."""
+        if event_type not in self._event_handlers:
+            self._event_handlers[event_type] = []
+        self._event_handlers[event_type].append(handler)
+
+        message = {
+            "type": "subscribe",
+            "id": str(uuid.uuid4()),
+            "event_type": event_type,
         }
+        result = await self._send_and_wait(message)
 
-        return self._request("POST", "/transaction", data)
+        return Response(
+            success=result.get("success", False),
+            data=result.get("result", {}),
+            error=result.get("error", {}).get("message") if not result.get("success") else None
+        )
 
-    # Convenience methods for common commands
+    async def unsubscribe(self, event_type: str | None = None) -> Response:
+        """Unsubscribe from an event type (or all if None)."""
+        if event_type:
+            self._event_handlers.pop(event_type, None)
+        else:
+            self._event_handlers.clear()
 
-    def click(self, target: str, button: str = "left", pos: dict | None = None) -> Response:
+        message = {
+            "type": "unsubscribe",
+            "id": str(uuid.uuid4()),
+        }
+        if event_type:
+            message["event_type"] = event_type
+
+        result = await self._send_and_wait(message)
+
+        return Response(
+            success=result.get("success", False),
+            data=result.get("result", {}),
+            error=result.get("error", {}).get("message") if not result.get("success") else None
+        )
+
+    # ========== Recording ==========
+
+    async def start_recording(self) -> Response:
+        """Start recording commands."""
+        message = {
+            "type": "record_start",
+            "id": str(uuid.uuid4()),
+        }
+        result = await self._send_and_wait(message)
+
+        return Response(
+            success=result.get("success", False),
+            data=result.get("result", {}),
+            error=result.get("error", {}).get("message") if not result.get("success") else None
+        )
+
+    async def stop_recording(self) -> Response:
+        """Stop recording and get recorded actions."""
+        message = {
+            "type": "record_stop",
+            "id": str(uuid.uuid4()),
+        }
+        result = await self._send_and_wait(message)
+
+        return Response(
+            success=result.get("success", False),
+            data=result.get("result", {}),
+            error=result.get("error", {}).get("message") if not result.get("success") else None
+        )
+
+    # ========== Convenience Methods ==========
+
+    async def tree(self, root: str | None = None, depth: int = -1,
+                   include_invisible: bool = False) -> Response:
+        """Get widget tree."""
+        params = {}
+        if root:
+            params["root"] = root
+        if depth >= 0:
+            params["depth"] = depth
+        if include_invisible:
+            params["include_invisible"] = True
+        return await self.command("get_tree", params)
+
+    async def screenshot(self, target: str | None = None, format: str = "png") -> Response:
+        """Capture screenshot."""
+        params = {"format": format}
+        if target:
+            params["target"] = target
+        return await self.command("screenshot", params)
+
+    async def click(self, target: str, button: str = "left", pos: dict | None = None) -> Response:
         """Click on a widget."""
         params = {"target": target, "button": button}
         if pos:
             params["pos"] = pos
-        return self.command("click", params)
+        return await self.command("click", params)
 
-    def double_click(self, target: str, pos: dict | None = None) -> Response:
+    async def double_click(self, target: str, pos: dict | None = None) -> Response:
         """Double-click on a widget."""
         params = {"target": target}
         if pos:
             params["pos"] = pos
-        return self.command("double_click", params)
+        return await self.command("double_click", params)
 
-    def right_click(self, target: str, pos: dict | None = None) -> Response:
+    async def right_click(self, target: str, pos: dict | None = None) -> Response:
         """Right-click on a widget."""
         params = {"target": target}
         if pos:
             params["pos"] = pos
-        return self.command("right_click", params)
+        return await self.command("right_click", params)
 
-    def type_text(self, target: str, text: str, clear_first: bool = False) -> Response:
+    async def type_text(self, target: str, text: str, clear_first: bool = False) -> Response:
         """Type text into a widget."""
-        return self.command("type", {
+        return await self.command("type", {
             "target": target,
             "text": text,
             "clear_first": clear_first
         })
 
-    def key(self, target: str, key: str, modifiers: list[str] | None = None) -> Response:
+    async def key(self, target: str, key: str, modifiers: list[str] | None = None) -> Response:
         """Press a key."""
         params = {"target": target, "key": key}
         if modifiers:
             params["modifiers"] = modifiers
-        return self.command("key", params)
+        return await self.command("key", params)
 
-    def key_sequence(self, target: str, sequence: str) -> Response:
+    async def key_sequence(self, target: str, sequence: str) -> Response:
         """Press a key sequence (e.g., 'Ctrl+Shift+S')."""
-        return self.command("key_sequence", {"target": target, "sequence": sequence})
+        return await self.command("key_sequence", {"target": target, "sequence": sequence})
 
-    def scroll(self, target: str, delta_x: int = 0, delta_y: int = 0) -> Response:
+    async def scroll(self, target: str, delta_x: int = 0, delta_y: int = 0) -> Response:
         """Scroll a widget."""
-        return self.command("scroll", {
+        return await self.command("scroll", {
             "target": target,
             "delta_x": delta_x,
             "delta_y": delta_y
         })
 
-    def hover(self, target: str, pos: dict | None = None) -> Response:
+    async def hover(self, target: str, pos: dict | None = None) -> Response:
         """Hover over a widget."""
         params = {"target": target}
         if pos:
             params["pos"] = pos
-        return self.command("hover", params)
+        return await self.command("hover", params)
 
-    def focus(self, target: str) -> Response:
+    async def focus(self, target: str) -> Response:
         """Set focus to a widget."""
-        return self.command("focus", {"target": target})
+        return await self.command("focus", {"target": target})
 
-    def get_property(self, target: str, property_name: str) -> Response:
+    async def get_property(self, target: str, property_name: str) -> Response:
         """Get a property value."""
-        return self.command("get_property", {
+        return await self.command("get_property", {
             "target": target,
             "property": property_name
         })
 
-    def set_property(self, target: str, property_name: str, value: Any) -> Response:
+    async def set_property(self, target: str, property_name: str, value: Any) -> Response:
         """Set a property value."""
-        return self.command("set_property", {
+        return await self.command("set_property", {
             "target": target,
             "property": property_name,
             "value": value
         })
 
-    def set_value(self, target: str, value: Any) -> Response:
+    async def set_value(self, target: str, value: Any) -> Response:
         """Smart value setter for common widgets."""
-        return self.command("set_value", {"target": target, "value": value})
+        return await self.command("set_value", {"target": target, "value": value})
 
-    def invoke(self, target: str, method: str) -> Response:
+    async def invoke(self, target: str, method: str) -> Response:
         """Invoke a method/slot."""
-        return self.command("invoke", {"target": target, "method": method})
+        return await self.command("invoke", {"target": target, "method": method})
 
-    def exists(self, target: str) -> Response:
+    async def exists(self, target: str) -> Response:
         """Check if element exists."""
-        return self.command("exists", {"target": target})
+        return await self.command("exists", {"target": target})
 
-    def is_visible(self, target: str) -> Response:
+    async def is_visible(self, target: str) -> Response:
         """Check if element is visible."""
-        return self.command("is_visible", {"target": target})
+        return await self.command("is_visible", {"target": target})
 
-    def describe(self, target: str) -> Response:
+    async def describe(self, target: str) -> Response:
         """Get detailed info about a widget."""
-        return self.command("describe", {"target": target})
+        return await self.command("describe", {"target": target})
 
-    def find(self, query: str, max_results: int = 100, visible_only: bool = False) -> Response:
+    async def find(self, query: str, max_results: int = 100, visible_only: bool = False) -> Response:
         """Find widgets matching a query."""
-        return self.command("find", {
+        return await self.command("find", {
             "query": query,
             "max_results": max_results,
             "visible_only": visible_only
         })
 
-    def wait(self, target: str, condition: str = "exists",
-             timeout_ms: int = 5000) -> Response:
+    async def wait(self, target: str, condition: str = "exists",
+                   timeout_ms: int = 5000) -> Response:
         """Wait for a condition."""
-        return self.command("wait", {
+        return await self.command("wait", {
             "target": target,
             "condition": condition,
             "timeout_ms": timeout_ms
         })
 
-    def wait_idle(self, timeout_ms: int = 5000) -> Response:
+    async def wait_idle(self, timeout_ms: int = 5000) -> Response:
         """Wait for Qt event queue to be empty."""
-        return self.command("wait_idle", {"timeout_ms": timeout_ms})
+        return await self.command("wait_idle", {"timeout_ms": timeout_ms})
 
-    def sleep(self, ms: int) -> Response:
+    async def sleep(self, ms: int) -> Response:
         """Hard delay."""
-        return self.command("sleep", {"ms": ms})
+        return await self.command("sleep", {"ms": ms})
 
-    def assert_property(self, target: str, property_name: str, operator: str,
-                        value: Any) -> Response:
+    async def assert_property(self, target: str, property_name: str, operator: str,
+                              value: Any) -> Response:
         """Assert a property condition."""
-        return self.command("assert", {
+        return await self.command("assert", {
             "target": target,
             "property": property_name,
             "operator": operator,
             "value": value
         })
 
+    # ========== Context Manager Support ==========
 
-def main():
+    async def __aenter__(self):
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.disconnect()
+
+
+# Synchronous wrapper for simpler use cases
+class SyncWidgeteerClient:
+    """Synchronous wrapper for WidgeteerClient."""
+
+    def __init__(self, host: str = "localhost", port: int = 9000, token: str | None = None):
+        self._client = WidgeteerClient(host, port, token)
+        self._loop = asyncio.new_event_loop()
+
+    def _run(self, coro):
+        return self._loop.run_until_complete(coro)
+
+    def connect(self) -> None:
+        self._run(self._client.connect())
+
+    def disconnect(self) -> None:
+        self._run(self._client.disconnect())
+
+    def command(self, cmd: str, params: dict | None = None, **kwargs) -> Response:
+        return self._run(self._client.command(cmd, params, **kwargs))
+
+    def tree(self, **kwargs) -> Response:
+        return self._run(self._client.tree(**kwargs))
+
+    def screenshot(self, **kwargs) -> Response:
+        return self._run(self._client.screenshot(**kwargs))
+
+    def click(self, target: str, **kwargs) -> Response:
+        return self._run(self._client.click(target, **kwargs))
+
+    def double_click(self, target: str, **kwargs) -> Response:
+        return self._run(self._client.double_click(target, **kwargs))
+
+    def right_click(self, target: str, **kwargs) -> Response:
+        return self._run(self._client.right_click(target, **kwargs))
+
+    def type_text(self, target: str, text: str, **kwargs) -> Response:
+        return self._run(self._client.type_text(target, text, **kwargs))
+
+    def key(self, target: str, key: str, **kwargs) -> Response:
+        return self._run(self._client.key(target, key, **kwargs))
+
+    def key_sequence(self, target: str, sequence: str) -> Response:
+        return self._run(self._client.key_sequence(target, sequence))
+
+    def scroll(self, target: str, **kwargs) -> Response:
+        return self._run(self._client.scroll(target, **kwargs))
+
+    def hover(self, target: str, **kwargs) -> Response:
+        return self._run(self._client.hover(target, **kwargs))
+
+    def focus(self, target: str) -> Response:
+        return self._run(self._client.focus(target))
+
+    def get_property(self, target: str, property_name: str) -> Response:
+        return self._run(self._client.get_property(target, property_name))
+
+    def set_property(self, target: str, property_name: str, value: Any) -> Response:
+        return self._run(self._client.set_property(target, property_name, value))
+
+    def set_value(self, target: str, value: Any) -> Response:
+        return self._run(self._client.set_value(target, value))
+
+    def invoke(self, target: str, method: str) -> Response:
+        return self._run(self._client.invoke(target, method))
+
+    def exists(self, target: str) -> Response:
+        return self._run(self._client.exists(target))
+
+    def is_visible(self, target: str) -> Response:
+        return self._run(self._client.is_visible(target))
+
+    def describe(self, target: str) -> Response:
+        return self._run(self._client.describe(target))
+
+    def find(self, query: str, **kwargs) -> Response:
+        return self._run(self._client.find(query, **kwargs))
+
+    def wait(self, target: str, **kwargs) -> Response:
+        return self._run(self._client.wait(target, **kwargs))
+
+    def wait_idle(self, **kwargs) -> Response:
+        return self._run(self._client.wait_idle(**kwargs))
+
+    def sleep(self, ms: int) -> Response:
+        return self._run(self._client.sleep(ms))
+
+    def start_recording(self) -> Response:
+        return self._run(self._client.start_recording())
+
+    def stop_recording(self) -> Response:
+        return self._run(self._client.stop_recording())
+
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.disconnect()
+
+
+async def main():
     """Quick test of the client."""
     import sys
 
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 9000
-    client = WidgeteerClient(port=port)
 
-    # Check health
-    resp = client.health()
-    if not resp.success:
-        print(f"Server not available: {resp.error}")
-        sys.exit(1)
-
-    print(f"Server status: {resp.data}")
-
-    # Get widget tree
-    resp = client.tree()
-    if resp.success:
-        print("\nWidget tree:")
-        print(json.dumps(resp.data, indent=2)[:500] + "...")
-    else:
-        print(f"Failed to get tree: {resp.error}")
+    async with WidgeteerClient(port=port) as client:
+        # Get widget tree
+        resp = await client.tree()
+        if resp.success:
+            print("Widget tree:")
+            print(json.dumps(resp.data, indent=2)[:500] + "...")
+        else:
+            print(f"Failed to get tree: {resp.error}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
