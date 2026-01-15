@@ -144,12 +144,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install clang-format
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-format-17
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-      - name: Check formatting
-        run: |
-          find include src sample -name '*.cpp' -o -name '*.h' | \
-            xargs clang-format-17 --dry-run --Werror
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
