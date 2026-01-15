@@ -1707,12 +1707,11 @@ QJsonObject CommandExecutor::invokeMethod(QObject* object, const QString& method
   }
   else
   {
-    // For methods with arguments, we need to convert and pass them
-    // This is more complex - we use QMetaObject::invokeMethod with typed args
+    // For methods with arguments, use QMetaObject::invokeMethod with string-based API
+    // This has better cross-Qt-version compatibility
 
     // Convert JSON args to appropriate types based on method signature
-    QList<QGenericArgument> genericArgs;
-    QVariantList variantStorage;  // Keep variants alive
+    QVariantList variantStorage;
 
     for (int i = 0; i < args.size() && i < matchedMethod.parameterCount(); ++i)
     {
@@ -1727,79 +1726,55 @@ QJsonObject CommandExecutor::invokeMethod(QObject* object, const QString& method
       variantStorage.append(argVariant);
     }
 
-    // Now invoke with proper arguments using the newer API
+    // Use QMetaObject::invokeMethod with Q_ARG for better compatibility
+    QByteArray methodSig = methodName.toLatin1();
+
     if (!hasReturn)
     {
       // Invoke void method with arguments
       switch (args.size())
       {
+        case 0:
+          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection);
+          break;
         case 1:
-          success = matchedMethod.invoke(
-              object, Qt::DirectConnection,
-              QGenericArgument(matchedMethod.parameterTypeName(0), variantStorage[0].constData()));
+          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection,
+                                              Q_ARG(QVariant, variantStorage[0]));
           break;
         case 2:
-          success = matchedMethod.invoke(
-              object, Qt::DirectConnection,
-              QGenericArgument(matchedMethod.parameterTypeName(0), variantStorage[0].constData()),
-              QGenericArgument(matchedMethod.parameterTypeName(1), variantStorage[1].constData()));
+          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection,
+                                              Q_ARG(QVariant, variantStorage[0]),
+                                              Q_ARG(QVariant, variantStorage[1]));
           break;
         default:
-          success = matchedMethod.invoke(object, Qt::DirectConnection);
+          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection);
       }
     }
     else
     {
-      // Invoke with return value and arguments - handle common return types
-      switch (returnTypeId)
+      // Invoke with return value - use QVariant for simplicity
+      QVariant ret;
+      switch (args.size())
       {
-        case QMetaType::Int: {
-          int ret = 0;
-          switch (args.size())
-          {
-            case 1:
-              success = matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(int, ret),
-                                             QGenericArgument(matchedMethod.parameterTypeName(0),
-                                                              variantStorage[0].constData()));
-              break;
-            case 2:
-              success = matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(int, ret),
-                                             QGenericArgument(matchedMethod.parameterTypeName(0),
-                                                              variantStorage[0].constData()),
-                                             QGenericArgument(matchedMethod.parameterTypeName(1),
-                                                              variantStorage[1].constData()));
-              break;
-          }
-          returnValue = ret;
+        case 0:
+          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection,
+                                              Q_RETURN_ARG(QVariant, ret));
           break;
-        }
-        case QMetaType::QString: {
-          QString ret;
-          switch (args.size())
-          {
-            case 1:
-              success =
-                  matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(QString, ret),
-                                       QGenericArgument(matchedMethod.parameterTypeName(0),
-                                                        variantStorage[0].constData()));
-              break;
-          }
-          returnValue = ret;
+        case 1:
+          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection,
+                                              Q_RETURN_ARG(QVariant, ret),
+                                              Q_ARG(QVariant, variantStorage[0]));
           break;
-        }
-        default: {
-          // Fallback - try void invocation
-          switch (args.size())
-          {
-            case 1:
-              success = matchedMethod.invoke(object, Qt::DirectConnection,
-                                             QGenericArgument(matchedMethod.parameterTypeName(0),
-                                                              variantStorage[0].constData()));
-              break;
-          }
+        case 2:
+          success = QMetaObject::invokeMethod(
+              object, methodSig.constData(), Qt::DirectConnection, Q_RETURN_ARG(QVariant, ret),
+              Q_ARG(QVariant, variantStorage[0]), Q_ARG(QVariant, variantStorage[1]));
           break;
-        }
+        default:
+          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection,
+                                              Q_RETURN_ARG(QVariant, ret));
       }
+      returnValue = ret;
     }
   }
 
