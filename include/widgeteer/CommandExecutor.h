@@ -7,14 +7,19 @@
 #include <widgeteer/Synchronizer.h>
 #include <widgeteer/UIIntrospector.h>
 
+#include <QHash>
 #include <QJsonObject>
 #include <QObject>
+#include <QPointer>
 #include <QStack>
 
 #include <functional>
 
 namespace widgeteer
 {
+
+// Type alias for custom command handlers
+using CommandHandler = std::function<QJsonObject(const QJsonObject& params)>;
 
 class WIDGETEER_EXPORT CommandExecutor : public QObject
 {
@@ -28,6 +33,10 @@ public:
 
   // Execute a transaction (multiple commands)
   TransactionResponse execute(const Transaction& tx);
+
+  // Extensibility: set registered objects and custom commands
+  void setRegisteredObjects(const QHash<QString, QPointer<QObject>>* objects);
+  void setCustomCommands(const QHash<QString, CommandHandler>* commands);
 
 signals:
   void stepCompleted(int index, bool success);
@@ -71,6 +80,11 @@ private:
   QJsonObject cmdWaitSignal(const QJsonObject& params);
   QJsonObject cmdSleep(const QJsonObject& params);
 
+  // Command handlers - Extensibility
+  QJsonObject cmdCall(const QJsonObject& params);
+  QJsonObject cmdListObjects(const QJsonObject& params);
+  QJsonObject cmdListCustomCommands(const QJsonObject& params);
+
   // Dispatch command by name
   QJsonObject dispatch(const QString& command, const QJsonObject& params);
 
@@ -88,11 +102,21 @@ private:
   void rollback();
   void clearUndoStack();
 
+  // Helper for invoking Q_INVOKABLE methods
+  QJsonObject invokeMethod(QObject* object, const QString& methodName, const QJsonArray& args);
+
+  // Convert QVariant to QJsonValue
+  static QJsonValue variantToJson(const QVariant& value);
+
   // Components
   ElementFinder finder_;
   UIIntrospector introspector_;
   EventInjector injector_;
   Synchronizer synchronizer_;
+
+  // Pointers to extensibility data (owned by Server)
+  const QHash<QString, QPointer<QObject>>* registeredObjects_ = nullptr;
+  const QHash<QString, CommandHandler>* customCommands_ = nullptr;
 };
 
 }  // namespace widgeteer

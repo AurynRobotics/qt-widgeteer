@@ -22,6 +22,53 @@
 #include <QToolBar>
 #include <QVBoxLayout>
 
+// Sample service class to demonstrate QObject registration
+class SampleService : public QObject
+{
+  Q_OBJECT
+
+public:
+  explicit SampleService(QObject* parent = nullptr) : QObject(parent)
+  {
+  }
+
+  // Q_INVOKABLE methods can be called via the "call" command
+  Q_INVOKABLE int add(int a, int b)
+  {
+    return a + b;
+  }
+
+  Q_INVOKABLE QString greet(const QString& name)
+  {
+    return QStringLiteral("Hello, %1!").arg(name);
+  }
+
+  Q_INVOKABLE QVariantMap getInfo()
+  {
+    return QVariantMap{ { "name", "SampleService" },
+                        { "version", "1.0" },
+                        { "counter", counter_ } };
+  }
+
+  Q_INVOKABLE void incrementCounter()
+  {
+    counter_++;
+  }
+
+  Q_INVOKABLE int getCounter() const
+  {
+    return counter_;
+  }
+
+  Q_INVOKABLE void setCounter(int value)
+  {
+    counter_ = value;
+  }
+
+private:
+  int counter_ = 0;
+};
+
 class SampleMainWindow : public QMainWindow
 {
   Q_OBJECT
@@ -352,6 +399,26 @@ int main(int argc, char* argv[])
   // Create and show main window
   SampleMainWindow window;
   window.show();
+
+  // ========== Extensibility Demo ==========
+
+  // Register a service object for QObject method invocation
+  SampleService service;
+  server.registerObject("myService", &service);
+
+  // Register a custom lambda command
+  server.registerCommand("echo", [](const QJsonObject& params) {
+    QString message = params.value("message").toString();
+    return QJsonObject{ { "echo", message }, { "length", message.length() } };
+  });
+
+  // Register a command that accesses application state
+  server.registerCommand("get_app_info", [](const QJsonObject& params) {
+    Q_UNUSED(params);
+    return QJsonObject{ { "name", QApplication::applicationName() },
+                        { "version", QApplication::applicationVersion() },
+                        { "pid", QApplication::applicationPid() } };
+  });
 
   return app.exec();
 }

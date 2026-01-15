@@ -12,6 +12,7 @@
 #include <QMetaMethod>
 #include <QScreen>
 #include <QSpinBox>
+#include <QTabWidget>
 #include <QTextEdit>
 #include <QThread>
 
@@ -161,6 +162,31 @@ QJsonObject CommandExecutor::dispatch(const QString& command, const QJsonObject&
     return cmdWaitSignal(params);
   if (command == "sleep")
     return cmdSleep(params);
+
+  // Extensibility commands
+  if (command == "call")
+    return cmdCall(params);
+  if (command == "list_objects")
+    return cmdListObjects(params);
+  if (command == "list_custom_commands")
+    return cmdListCustomCommands(params);
+
+  // Check for custom command handlers
+  if (customCommands_ && customCommands_->contains(command))
+  {
+    try
+    {
+      return customCommands_->value(command)(params);
+    }
+    catch (const std::exception& e)
+    {
+      QJsonObject error;
+      error["code"] = ErrorCode::InvocationFailed;
+      error["message"] =
+          QStringLiteral("Custom command '%1' threw exception: %2").arg(command, e.what());
+      return QJsonObject{ { "error", error } };
+    }
+  }
 
   // Unknown command
   QJsonObject error;
@@ -356,6 +382,26 @@ QJsonObject CommandExecutor::cmdClick(const QJsonObject& params)
   {
     QJsonObject posObj = params.value("pos").toObject();
     pos = QPoint(posObj.value("x").toInt(), posObj.value("y").toInt());
+  }
+
+  // For QAbstractButton (buttons, checkboxes, radio buttons), use the native click()
+  // method when doing a simple left-click without a specific position, as it's more reliable
+  if (button == Qt::LeftButton && pos.isNull())
+  {
+    if (auto* abstractButton = qobject_cast<QAbstractButton*>(widget))
+    {
+      abstractButton->click();
+      QApplication::processEvents();
+
+      QRect geom = widget->geometry();
+      QJsonObject geometry;
+      geometry["x"] = geom.x();
+      geometry["y"] = geom.y();
+      geometry["width"] = geom.width();
+      geometry["height"] = geom.height();
+
+      return QJsonObject{ { "clicked", true }, { "target_geometry", geometry } };
+    }
   }
 
   auto result = injector_.click(widget, button, pos);
@@ -850,6 +896,12 @@ QJsonObject CommandExecutor::cmdSetValue(const QJsonObject& params)
   QJsonValue value = params.value("value");
 
   // Try to set value based on widget type
+  if (auto* tabWidget = qobject_cast<QTabWidget*>(widget))
+  {
+    tabWidget->setCurrentIndex(value.toInt());
+    return QJsonObject{ { "value_set", true } };
+  }
+
   if (auto* combo = qobject_cast<QComboBox*>(widget))
   {
     if (value.isDouble())
@@ -979,35 +1031,93 @@ QJsonObject CommandExecutor::cmdAssert(const QJsonObject& params)
 
   QVariant actual = widget->property(propertyName.toUtf8().constData());
 
+  // Convert QVariant to QJsonValue for proper comparison and reporting
+  QJsonValue actualJson;
+  if (!actual.isValid())
+  {
+    actualJson = QJsonValue::Null;
+  }
+  else if (actual.typeId() == QMetaType::Bool)
+  {
+    actualJson = actual.toBool();
+  }
+  else if (actual.typeId() == QMetaType::Int || actual.typeId() == QMetaType::LongLong)
+  {
+    actualJson = actual.toInt();
+  }
+  else if (actual.typeId() == QMetaType::Double || actual.typeId() == QMetaType::Float)
+  {
+    actualJson = actual.toDouble();
+  }
+  else if (actual.canConvert<QString>())
+  {
+    actualJson = actual.toString();
+  }
+  else
+  {
+    actualJson = actual.toString();
+  }
+
+  // For comparison, convert expected value to match actual type when possible
   bool passed = false;
   if (op == "==" || op == "equals")
   {
-    passed = (actual.toString() == expected.toString()) ||
-             (actual.toDouble() == expected.toDouble()) || (actual.toBool() == expected.toBool());
+    if (actualJson.isBool())
+    {
+      // Handle bool comparison - expected might be string "true"/"false" or bool
+      bool expectedBool =
+          expected.isBool() ? expected.toBool() : (expected.toString().toLower() == "true");
+      passed = actualJson.toBool() == expectedBool;
+    }
+    else if (actualJson.isDouble())
+    {
+      // Handle numeric comparison
+      double expectedNum =
+          expected.isDouble() ? expected.toDouble() : expected.toString().toDouble();
+      passed = actualJson.toDouble() == expectedNum;
+    }
+    else
+    {
+      // String comparison
+      passed = actualJson.toString() == expected.toString();
+    }
   }
   else if (op == "!=" || op == "not_equals")
   {
-    passed = actual.toString() != expected.toString();
+    if (actualJson.isDouble())
+    {
+      double expectedNum =
+          expected.isDouble() ? expected.toDouble() : expected.toString().toDouble();
+      passed = actualJson.toDouble() != expectedNum;
+    }
+    else
+    {
+      passed = actualJson.toString() != expected.toString();
+    }
   }
   else if (op == ">" || op == "gt")
   {
-    passed = actual.toDouble() > expected.toDouble();
+    double expectedNum = expected.isDouble() ? expected.toDouble() : expected.toString().toDouble();
+    passed = actualJson.toDouble() > expectedNum;
   }
   else if (op == ">=" || op == "gte")
   {
-    passed = actual.toDouble() >= expected.toDouble();
+    double expectedNum = expected.isDouble() ? expected.toDouble() : expected.toString().toDouble();
+    passed = actualJson.toDouble() >= expectedNum;
   }
   else if (op == "<" || op == "lt")
   {
-    passed = actual.toDouble() < expected.toDouble();
+    double expectedNum = expected.isDouble() ? expected.toDouble() : expected.toString().toDouble();
+    passed = actualJson.toDouble() < expectedNum;
   }
   else if (op == "<=" || op == "lte")
   {
-    passed = actual.toDouble() <= expected.toDouble();
+    double expectedNum = expected.isDouble() ? expected.toDouble() : expected.toString().toDouble();
+    passed = actualJson.toDouble() <= expectedNum;
   }
   else if (op == "contains")
   {
-    passed = actual.toString().contains(expected.toString());
+    passed = actualJson.toString().contains(expected.toString());
   }
 
   QJsonObject result;
@@ -1015,7 +1125,7 @@ QJsonObject CommandExecutor::cmdAssert(const QJsonObject& params)
   result["property"] = propertyName;
   result["operator"] = op;
   result["expected"] = expected;
-  result["actual"] = actual.toString();
+  result["actual"] = actualJson;
 
   return result;
 }
@@ -1137,6 +1247,447 @@ void CommandExecutor::rollback()
 void CommandExecutor::clearUndoStack()
 {
   undoStack_.clear();
+}
+
+// Extensibility support
+void CommandExecutor::setRegisteredObjects(const QHash<QString, QPointer<QObject>>* objects)
+{
+  registeredObjects_ = objects;
+}
+
+void CommandExecutor::setCustomCommands(const QHash<QString, CommandHandler>* commands)
+{
+  customCommands_ = commands;
+}
+
+QJsonObject CommandExecutor::cmdCall(const QJsonObject& params)
+{
+  QString objectName = params.value("object").toString();
+  if (objectName.isEmpty())
+  {
+    QJsonObject error;
+    error["code"] = ErrorCode::InvalidParams;
+    error["message"] = "Missing 'object' parameter";
+    return QJsonObject{ { "error", error } };
+  }
+
+  QString methodName = params.value("method").toString();
+  if (methodName.isEmpty())
+  {
+    QJsonObject error;
+    error["code"] = ErrorCode::InvalidParams;
+    error["message"] = "Missing 'method' parameter";
+    return QJsonObject{ { "error", error } };
+  }
+
+  if (!registeredObjects_ || !registeredObjects_->contains(objectName))
+  {
+    QJsonObject error;
+    error["code"] = ErrorCode::ElementNotFound;
+    error["message"] = QStringLiteral("Registered object '%1' not found").arg(objectName);
+    return QJsonObject{ { "error", error } };
+  }
+
+  QObject* object = registeredObjects_->value(objectName);
+  if (!object)
+  {
+    QJsonObject error;
+    error["code"] = ErrorCode::ElementNotFound;
+    error["message"] = QStringLiteral("Registered object '%1' has been deleted").arg(objectName);
+    return QJsonObject{ { "error", error } };
+  }
+
+  QJsonArray args = params.value("args").toArray();
+  return invokeMethod(object, methodName, args);
+}
+
+QJsonObject CommandExecutor::cmdListObjects(const QJsonObject& params)
+{
+  Q_UNUSED(params);
+
+  QJsonArray objects;
+
+  if (registeredObjects_)
+  {
+    for (auto it = registeredObjects_->constBegin(); it != registeredObjects_->constEnd(); ++it)
+    {
+      QJsonObject obj;
+      obj["name"] = it.key();
+
+      QObject* qobj = it.value();
+      if (qobj)
+      {
+        obj["class"] = QString::fromLatin1(qobj->metaObject()->className());
+
+        // List Q_INVOKABLE methods
+        QJsonArray methods;
+        const QMetaObject* meta = qobj->metaObject();
+        for (int i = meta->methodOffset(); i < meta->methodCount(); ++i)
+        {
+          QMetaMethod method = meta->method(i);
+          if (method.methodType() == QMetaMethod::Method ||
+              method.methodType() == QMetaMethod::Slot)
+          {
+            // Check if invokable (public and accessible)
+            if (method.access() == QMetaMethod::Public)
+            {
+              QJsonObject methodInfo;
+              methodInfo["name"] = QString::fromLatin1(method.name());
+              methodInfo["signature"] = QString::fromLatin1(method.methodSignature());
+              methodInfo["returnType"] = QString::fromLatin1(method.typeName());
+
+              QJsonArray paramTypes;
+              for (int j = 0; j < method.parameterCount(); ++j)
+              {
+                paramTypes.append(QString::fromLatin1(method.parameterTypeName(j)));
+              }
+              methodInfo["parameterTypes"] = paramTypes;
+
+              methods.append(methodInfo);
+            }
+          }
+        }
+        obj["methods"] = methods;
+      }
+      else
+      {
+        obj["class"] = "null";
+        obj["methods"] = QJsonArray();
+      }
+
+      objects.append(obj);
+    }
+  }
+
+  return QJsonObject{ { "objects", objects }, { "count", objects.size() } };
+}
+
+QJsonObject CommandExecutor::cmdListCustomCommands(const QJsonObject& params)
+{
+  Q_UNUSED(params);
+
+  QJsonArray commands;
+
+  if (customCommands_)
+  {
+    for (auto it = customCommands_->constBegin(); it != customCommands_->constEnd(); ++it)
+    {
+      commands.append(it.key());
+    }
+  }
+
+  return QJsonObject{ { "commands", commands }, { "count", commands.size() } };
+}
+
+QJsonObject CommandExecutor::invokeMethod(QObject* object, const QString& methodName,
+                                          const QJsonArray& args)
+{
+  const QMetaObject* meta = object->metaObject();
+
+  // Find a matching method by name and parameter count
+  int methodIndex = -1;
+  QMetaMethod matchedMethod;
+
+  for (int i = 0; i < meta->methodCount(); ++i)
+  {
+    QMetaMethod method = meta->method(i);
+    if (QString::fromLatin1(method.name()) == methodName &&
+        method.parameterCount() == args.size() && method.access() == QMetaMethod::Public)
+    {
+      methodIndex = i;
+      matchedMethod = method;
+      break;
+    }
+  }
+
+  if (methodIndex < 0)
+  {
+    // Try to find a method with matching name (for better error message)
+    bool foundName = false;
+    int foundParamCount = -1;
+    for (int i = 0; i < meta->methodCount(); ++i)
+    {
+      if (QString::fromLatin1(meta->method(i).name()) == methodName)
+      {
+        foundName = true;
+        foundParamCount = meta->method(i).parameterCount();
+        break;
+      }
+    }
+
+    QJsonObject error;
+    error["code"] = ErrorCode::InvocationFailed;
+    if (foundName)
+    {
+      error["message"] =
+          QStringLiteral(
+              "Method '%1' found but parameter count mismatch (got %2 args, expected %3)")
+              .arg(methodName)
+              .arg(args.size())
+              .arg(foundParamCount);
+    }
+    else
+    {
+      error["message"] = QStringLiteral("Method '%1' not found").arg(methodName);
+    }
+    return QJsonObject{ { "error", error } };
+  }
+
+  // Check return type
+  int returnTypeId = matchedMethod.returnType();
+  QString returnTypeName = QString::fromLatin1(matchedMethod.typeName());
+  bool hasReturn = returnTypeId != QMetaType::Void && !returnTypeName.isEmpty();
+
+  // Build the invocation - we need to handle types properly
+  bool success = false;
+  QVariant returnValue;
+
+  // For methods with no arguments, use simpler invocation
+  if (args.isEmpty())
+  {
+    if (!hasReturn)
+    {
+      success = matchedMethod.invoke(object, Qt::DirectConnection);
+    }
+    else
+    {
+      // Create appropriate return storage based on return type
+      switch (returnTypeId)
+      {
+        case QMetaType::Int: {
+          int ret = 0;
+          success = matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(int, ret));
+          returnValue = ret;
+          break;
+        }
+        case QMetaType::Bool: {
+          bool ret = false;
+          success = matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(bool, ret));
+          returnValue = ret;
+          break;
+        }
+        case QMetaType::Double: {
+          double ret = 0.0;
+          success = matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(double, ret));
+          returnValue = ret;
+          break;
+        }
+        case QMetaType::QString: {
+          QString ret;
+          success = matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(QString, ret));
+          returnValue = ret;
+          break;
+        }
+        case QMetaType::QVariantMap: {
+          QVariantMap ret;
+          success =
+              matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(QVariantMap, ret));
+          returnValue = ret;
+          break;
+        }
+        case QMetaType::QVariantList: {
+          QVariantList ret;
+          success =
+              matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(QVariantList, ret));
+          returnValue = ret;
+          break;
+        }
+        case QMetaType::QJsonObject: {
+          QJsonObject ret;
+          success =
+              matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(QJsonObject, ret));
+          returnValue = ret;
+          break;
+        }
+        default: {
+          // Try generic QVariant return
+          QVariant ret;
+          success = matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(QVariant, ret));
+          returnValue = ret;
+          break;
+        }
+      }
+    }
+  }
+  else
+  {
+    // For methods with arguments, we need to convert and pass them
+    // This is more complex - we use QMetaObject::invokeMethod with typed args
+
+    // Convert JSON args to appropriate types based on method signature
+    QList<QGenericArgument> genericArgs;
+    QVariantList variantStorage;  // Keep variants alive
+
+    for (int i = 0; i < args.size() && i < matchedMethod.parameterCount(); ++i)
+    {
+      int paramType = matchedMethod.parameterType(i);
+      QVariant argVariant = args.at(i).toVariant();
+
+      // Convert to expected type
+      if (paramType != QMetaType::QVariant && argVariant.typeId() != paramType)
+      {
+        argVariant.convert(QMetaType(paramType));
+      }
+      variantStorage.append(argVariant);
+    }
+
+    // Now invoke with proper arguments using the newer API
+    if (!hasReturn)
+    {
+      // Invoke void method with arguments
+      switch (args.size())
+      {
+        case 1:
+          success = matchedMethod.invoke(
+              object, Qt::DirectConnection,
+              QGenericArgument(matchedMethod.parameterTypeName(0), variantStorage[0].constData()));
+          break;
+        case 2:
+          success = matchedMethod.invoke(
+              object, Qt::DirectConnection,
+              QGenericArgument(matchedMethod.parameterTypeName(0), variantStorage[0].constData()),
+              QGenericArgument(matchedMethod.parameterTypeName(1), variantStorage[1].constData()));
+          break;
+        default:
+          success = matchedMethod.invoke(object, Qt::DirectConnection);
+      }
+    }
+    else
+    {
+      // Invoke with return value and arguments - handle common return types
+      switch (returnTypeId)
+      {
+        case QMetaType::Int: {
+          int ret = 0;
+          switch (args.size())
+          {
+            case 1:
+              success = matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(int, ret),
+                                             QGenericArgument(matchedMethod.parameterTypeName(0),
+                                                              variantStorage[0].constData()));
+              break;
+            case 2:
+              success = matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(int, ret),
+                                             QGenericArgument(matchedMethod.parameterTypeName(0),
+                                                              variantStorage[0].constData()),
+                                             QGenericArgument(matchedMethod.parameterTypeName(1),
+                                                              variantStorage[1].constData()));
+              break;
+          }
+          returnValue = ret;
+          break;
+        }
+        case QMetaType::QString: {
+          QString ret;
+          switch (args.size())
+          {
+            case 1:
+              success =
+                  matchedMethod.invoke(object, Qt::DirectConnection, Q_RETURN_ARG(QString, ret),
+                                       QGenericArgument(matchedMethod.parameterTypeName(0),
+                                                        variantStorage[0].constData()));
+              break;
+          }
+          returnValue = ret;
+          break;
+        }
+        default: {
+          // Fallback - try void invocation
+          switch (args.size())
+          {
+            case 1:
+              success = matchedMethod.invoke(object, Qt::DirectConnection,
+                                             QGenericArgument(matchedMethod.parameterTypeName(0),
+                                                              variantStorage[0].constData()));
+              break;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  if (!success)
+  {
+    QJsonObject error;
+    error["code"] = ErrorCode::InvocationFailed;
+    error["message"] = QStringLiteral("Failed to invoke method '%1'").arg(methodName);
+    return QJsonObject{ { "error", error } };
+  }
+
+  QJsonObject result;
+  result["invoked"] = true;
+  result["method"] = methodName;
+
+  if (hasReturn && returnValue.isValid())
+  {
+    result["return"] = variantToJson(returnValue);
+  }
+
+  return result;
+}
+
+QJsonValue CommandExecutor::variantToJson(const QVariant& value)
+{
+  if (!value.isValid())
+  {
+    return QJsonValue::Null;
+  }
+
+  switch (value.typeId())
+  {
+    case QMetaType::Bool:
+      return value.toBool();
+    case QMetaType::Int:
+    case QMetaType::LongLong:
+      return value.toInt();
+    case QMetaType::UInt:
+    case QMetaType::ULongLong:
+      return value.toLongLong();
+    case QMetaType::Float:
+    case QMetaType::Double:
+      return value.toDouble();
+    case QMetaType::QString:
+      return value.toString();
+    case QMetaType::QStringList: {
+      QJsonArray arr;
+      for (const QString& s : value.toStringList())
+      {
+        arr.append(s);
+      }
+      return arr;
+    }
+    case QMetaType::QVariantList: {
+      QJsonArray arr;
+      for (const QVariant& v : value.toList())
+      {
+        arr.append(variantToJson(v));
+      }
+      return arr;
+    }
+    case QMetaType::QVariantMap: {
+      QJsonObject obj;
+      QVariantMap map = value.toMap();
+      for (auto it = map.constBegin(); it != map.constEnd(); ++it)
+      {
+        obj[it.key()] = variantToJson(it.value());
+      }
+      return obj;
+    }
+    case QMetaType::QJsonValue:
+      return value.toJsonValue();
+    case QMetaType::QJsonObject:
+      return value.toJsonObject();
+    case QMetaType::QJsonArray:
+      return value.toJsonArray();
+    default:
+      // Try string conversion as fallback
+      if (value.canConvert<QString>())
+      {
+        return value.toString();
+      }
+      return QJsonValue::Null;
+  }
 }
 
 }  // namespace widgeteer

@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
+#include <QSet>
 #include <QTcpSocket>
 #include <QThread>
 #include <QUrlQuery>
@@ -108,6 +109,93 @@ void Server::enableLogging(bool enable)
 void Server::setRootWidget(QWidget* root)
 {
   rootWidget_ = root;
+}
+
+// ========== Extensibility API Implementation ==========
+
+void Server::registerObject(const QString& name, QObject* object)
+{
+  if (!object)
+  {
+    qWarning() << "Widgeteer: Cannot register null object with name:" << name;
+    return;
+  }
+
+  registeredObjects_[name] = object;
+
+  // Update executor with the new registration
+  executor_->setRegisteredObjects(&registeredObjects_);
+
+  if (loggingEnabled_)
+  {
+    qDebug() << "Widgeteer: Registered object:" << name << "->"
+             << object->metaObject()->className();
+  }
+}
+
+void Server::unregisterObject(const QString& name)
+{
+  registeredObjects_.remove(name);
+
+  if (loggingEnabled_)
+  {
+    qDebug() << "Widgeteer: Unregistered object:" << name;
+  }
+}
+
+void Server::registerCommand(const QString& name, CommandHandler handler)
+{
+  if (!handler)
+  {
+    qWarning() << "Widgeteer: Cannot register null handler for command:" << name;
+    return;
+  }
+
+  // Check for conflicts with built-in commands
+  static const QSet<QString> builtinCommands = {
+    "get_tree",    "find",         "describe",     "get_property", "list_properties",
+    "get_actions", "click",        "double_click", "right_click",  "type",
+    "key",         "key_sequence", "drag",         "scroll",       "hover",
+    "focus",       "set_property", "invoke",       "set_value",    "screenshot",
+    "assert",      "exists",       "is_visible",   "wait",         "wait_idle",
+    "wait_signal", "sleep",        "call",         "list_objects", "list_custom_commands"
+  };
+
+  if (builtinCommands.contains(name))
+  {
+    qWarning() << "Widgeteer: Cannot override built-in command:" << name;
+    return;
+  }
+
+  customCommands_[name] = handler;
+
+  // Update executor with the new registration
+  executor_->setCustomCommands(&customCommands_);
+
+  if (loggingEnabled_)
+  {
+    qDebug() << "Widgeteer: Registered custom command:" << name;
+  }
+}
+
+void Server::unregisterCommand(const QString& name)
+{
+  customCommands_.remove(name);
+
+  if (loggingEnabled_)
+  {
+    qDebug() << "Widgeteer: Unregistered custom command:" << name;
+  }
+}
+
+QStringList Server::registeredObjects() const
+{
+  return registeredObjects_.keys();
+}
+
+QStringList Server::registeredCommands() const
+{
+  return customCommands_.keys();
 }
 
 void Server::onNewConnection()

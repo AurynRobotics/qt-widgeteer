@@ -7,10 +7,14 @@
 #include <QTcpServer>
 #include <QWidget>
 
+#include <functional>
 #include <memory>
 
 namespace widgeteer
 {
+
+// Type alias for custom command handlers
+using CommandHandler = std::function<QJsonObject(const QJsonObject& params)>;
 
 class WIDGETEER_EXPORT Server : public QObject
 {
@@ -39,6 +43,61 @@ public:
 
   // Limit introspection scope to specific widget tree
   void setRootWidget(QWidget* root);
+
+  // ========== Extensibility API ==========
+
+  /**
+   * Register a QObject to expose its Q_INVOKABLE methods via the API.
+   *
+   * Usage:
+   *   server.registerObject("myService", &myServiceInstance);
+   *
+   * Then call via API:
+   *   {"command": "call", "params": {"object": "myService", "method": "doSomething", "args":
+   * [...]}}
+   *
+   * @param name Unique name to identify this object in API calls
+   * @param object Pointer to QObject (must outlive the server)
+   */
+  void registerObject(const QString& name, QObject* object);
+
+  /**
+   * Unregister a previously registered QObject.
+   */
+  void unregisterObject(const QString& name);
+
+  /**
+   * Register a custom command handler (lambda/function).
+   *
+   * Usage:
+   *   server.registerCommand("loadProject", [&app](const QJsonObject& params) {
+   *       QString path = params["path"].toString();
+   *       bool ok = app.loadProject(path);
+   *       return QJsonObject{{"success", ok}, {"path", path}};
+   *   });
+   *
+   * Then call via API:
+   *   {"command": "loadProject", "params": {"path": "/path/to/project"}}
+   *
+   * @param name Command name (must not conflict with built-in commands)
+   * @param handler Function that receives params and returns result
+   */
+  void registerCommand(const QString& name, CommandHandler handler);
+
+  /**
+   * Unregister a previously registered command handler.
+   */
+  void unregisterCommand(const QString& name);
+
+  /**
+   * Get list of registered object names.
+   */
+  QStringList registeredObjects() const;
+
+  /**
+   * Get list of registered custom command names.
+   */
+  QStringList registeredCommands() const;
 
 signals:
   void requestReceived(const QString& id, const QString& command);
@@ -94,6 +153,10 @@ private:
   bool corsEnabled_ = true;
   bool loggingEnabled_ = false;
   QPointer<QWidget> rootWidget_;
+
+  // Extensibility: registered objects and custom commands
+  QHash<QString, QPointer<QObject>> registeredObjects_;
+  QHash<QString, CommandHandler> customCommands_;
   bool running_ = false;
 
   // Buffer for incomplete requests

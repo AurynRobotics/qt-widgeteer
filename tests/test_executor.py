@@ -80,9 +80,11 @@ class TestExecutor:
         if not resp.success:
             return False, resp.error
 
-        passed = resp.data.get("passed", False)
+        # The response has "result" nested, so check both locations for compatibility
+        result = resp.data.get("result", resp.data)
+        passed = result.get("passed", False)
         if not passed:
-            actual = resp.data.get("actual")
+            actual = result.get("actual")
             return False, f"Expected {property_name} {operator} {expected}, got {actual}"
 
         return True, None

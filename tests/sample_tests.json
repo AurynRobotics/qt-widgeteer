@@ -297,6 +297,106 @@
           }
         }
       ]
+    },
+    {
+      "name": "List registered objects",
+      "steps": [
+        {
+          "command": "list_objects",
+          "params": {}
+        }
+      ]
+    },
+    {
+      "name": "List custom commands",
+      "steps": [
+        {
+          "command": "list_custom_commands",
+          "params": {}
+        }
+      ]
+    },
+    {
+      "name": "Call custom echo command",
+      "steps": [
+        {
+          "command": "echo",
+          "params": {
+            "message": "Hello from Widgeteer"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Call custom get_app_info command",
+      "steps": [
+        {
+          "command": "get_app_info",
+          "params": {}
+        }
+      ]
+    },
+    {
+      "name": "Call registered object method (getCounter)",
+      "steps": [
+        {
+          "command": "call",
+          "params": {
+            "object": "myService",
+            "method": "setCounter",
+            "args": [
+              42
+            ]
+          }
+        },
+        {
+          "command": "call",
+          "params": {
+            "object": "myService",
+            "method": "getCounter",
+            "args": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "Call registered object method (incrementCounter)",
+      "steps": [
+        {
+          "command": "call",
+          "params": {
+            "object": "myService",
+            "method": "setCounter",
+            "args": [
+              0
+            ]
+          }
+        },
+        {
+          "command": "call",
+          "params": {
+            "object": "myService",
+            "method": "incrementCounter",
+            "args": []
+          }
+        },
+        {
+          "command": "call",
+          "params": {
+            "object": "myService",
+            "method": "incrementCounter",
+            "args": []
+          }
+        },
+        {
+          "command": "call",
+          "params": {
+            "object": "myService",
+            "method": "getCounter",
+            "args": []
+          }
+        }
+      ]
     }
   ],
   "setup": [

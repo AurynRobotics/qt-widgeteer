@@ -21,6 +21,9 @@ EventInjector::Result EventInjector::click(QWidget* target, Qt::MouseButton btn,
   QPoint clickPos = resolvePosition(target, pos);
   QTest::mouseClick(target, btn, mods, clickPos);
 
+  // Process events to ensure the click is fully handled
+  QApplication::processEvents();
+
   result.success = true;
   return result;
 }
