@@ -95,6 +95,11 @@ jobs:
           arch: 'gcc_64'
           modules: 'qtnetworkauth qtwebsockets'
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -109,11 +114,6 @@ jobs:
 
       - name: Make executable
         run: chmod +x build/sample/widgeteer_sample
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
 
       - name: Run integration tests
         run: |
