@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from widgeteer_client import WidgeteerClient, Response
+from widgeteer_client import SyncWidgeteerClient as WidgeteerClient, Response
 
 
 @dataclass
@@ -187,9 +187,18 @@ def wait_for_server(client: WidgeteerClient, timeout: float = 10.0) -> bool:
     """Wait for server to become available."""
     start = time.time()
     while time.time() - start < timeout:
-        resp = client.health()
-        if resp.success:
-            return True
+        try:
+            client.connect()
+            # Try a simple command to verify connection works
+            resp = client.tree(depth=0)
+            if resp.success:
+                return True
+            client.disconnect()
+        except Exception:
+            try:
+                client.disconnect()
+            except Exception:
+                pass
         time.sleep(0.5)
     return False
 
