@@ -386,6 +386,23 @@ with open("screenshot.png", "wb") as f:
 
 Qt applications often show dialog boxes for errors, warnings, or confirmations. Here's how to detect and handle them.
 
+#### Blocking vs Non-Blocking Dialogs
+
+Widgeteer supports both types of dialogs:
+
+- **Blocking dialogs** (`dialog.exec()`): The application code waits for the dialog to close before continuing. This is common with `QMessageBox::question()`, `QMessageBox::warning()`, etc.
+- **Non-blocking dialogs** (`dialog.show()`): The application shows the dialog and continues executing. The dialog result is typically handled via signals.
+
+**Important**: When working with blocking dialogs, use `sleep` instead of `wait` commands. The `wait` command uses Qt's `processEvents()` internally, which can block when nested inside a dialog's `exec()` call.
+
+```python
+# For blocking dialogs, use sleep to wait for the dialog to appear
+client.click("@name:showDialogButton")
+client.command("sleep", {"ms": 100})  # Give dialog time to appear
+client.is_visible("@name:confirmDialog")
+client.key("@name:confirmDialog", "Escape")
+```
+
 #### Detecting Dialogs
 
 ```python
