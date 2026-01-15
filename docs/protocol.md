@@ -1,13 +1,16 @@
 # Widgeteer JSON Protocol Reference
 
-This document describes the complete HTTP/JSON API protocol for Widgeteer.
+This document describes the complete WebSocket/JSON API protocol for Widgeteer.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [HTTP Endpoints](#http-endpoints)
+- [WebSocket Connection](#websocket-connection)
+- [Message Types](#message-types)
 - [Element Selectors](#element-selectors)
 - [Commands](#commands)
+- [Events](#events)
+- [Recording](#recording)
 - [Response Format](#response-format)
 - [Error Codes](#error-codes)
 - [Transactions](#transactions)
@@ -16,157 +19,76 @@ This document describes the complete HTTP/JSON API protocol for Widgeteer.
 
 ## Overview
 
-Widgeteer exposes an HTTP API on a configurable port (default: 9000). All requests and responses use JSON format with `Content-Type: application/json`.
+Widgeteer exposes a WebSocket API on a configurable port (default: 9000). All messages are JSON objects with a `type` field indicating the message type.
 
-### Base URL
-
-```
-http://localhost:9000
-```
-
-### Common Headers
+### Connection URL
 
 ```
-Content-Type: application/json
+ws://localhost:9000
 ```
 
----
-
-## HTTP Endpoints
-
-### GET /health
-
-Check server status.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "version": "0.1.0",
-  "qt_version": "6.5.3"
-}
+With authentication:
+```
+ws://localhost:9000?token=your-api-key
 ```
 
 ---
 
-### GET /schema
+## WebSocket Connection
 
-Get the complete command schema. Useful for LLM agents to understand available operations.
+### Connecting
 
-**Response:**
-```json
-{
-  "commands": {
-    "click": {
-      "description": "Click on a widget",
-      "params": {
-        "target": {"type": "string", "required": true},
-        "button": {"type": "string", "enum": ["left", "right", "middle"], "default": "left"},
-        "pos": {"type": "object", "properties": {"x": "int", "y": "int"}}
-      }
-    }
-    // ... more commands
-  },
-  "selectors": {
-    "@name:": "Select by objectName",
-    "@class:": "Select by class name",
-    "@text:": "Select by text content",
-    "@accessible:": "Select by accessible name"
-  }
-}
+Use any WebSocket client to connect:
+
+```bash
+# Using wscat
+wscat -c ws://localhost:9000
+
+# With authentication
+wscat -c "ws://localhost:9000?token=secret"
+```
+
+```python
+# Python async client
+from widgeteer_client import WidgeteerClient
+
+async with WidgeteerClient(port=9000, token="secret") as client:
+    result = await client.tree()
 ```
 
 ---
 
-### GET /tree
+## Message Types
 
-Get the widget hierarchy as JSON.
+All messages have a `type` field. Client-to-server message types:
 
-**Query Parameters:**
+| Type | Description |
+|------|-------------|
+| `command` | Execute a command |
+| `subscribe` | Subscribe to event type |
+| `unsubscribe` | Unsubscribe from events |
+| `record_start` | Start recording commands |
+| `record_stop` | Stop recording and get results |
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `root` | string | - | Root widget selector (default: all top-level widgets) |
-| `depth` | int | -1 | Maximum depth (-1 = unlimited) |
-| `include_invisible` | bool | false | Include invisible widgets |
-| `include_properties` | bool | false | Include property values |
-| `include_geometry` | bool | true | Include geometry information |
+Server-to-client message types:
 
-**Example Request:**
-```
-GET /tree?depth=3&include_properties=true
-```
-
-**Response:**
-```json
-{
-  "widgets": [
-    {
-      "objectName": "mainWindow",
-      "className": "QMainWindow",
-      "path": "mainWindow",
-      "visible": true,
-      "enabled": true,
-      "geometry": {"x": 100, "y": 100, "width": 800, "height": 600},
-      "children": [
-        {
-          "objectName": "centralWidget",
-          "className": "QWidget",
-          "path": "mainWindow/centralWidget",
-          "visible": true,
-          "enabled": true,
-          "children": [...]
-        }
-      ]
-    }
-  ]
-}
-```
+| Type | Description |
+|------|-------------|
+| `response` | Response to a command/request |
+| `event` | Event notification (for subscribed events) |
 
 ---
 
-### GET /screenshot
+## Command Message Format
 
-Capture a screenshot.
-
-**Query Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `target` | string | - | Widget selector (default: entire screen) |
-| `format` | string | png | Image format (png, jpg) |
-
-**Example Request:**
-```
-GET /screenshot?target=@name:mainWindow&format=png
-```
-
-**Response:**
+**Request:**
 ```json
 {
-  "screenshot": "iVBORw0KGgoAAAANSUhEUgAA...",
-  "format": "png",
-  "width": 800,
-  "height": 600
-}
-```
-
-The `screenshot` field contains base64-encoded image data.
-
----
-
-### POST /command
-
-Execute a single command.
-
-**Request Body:**
-```json
-{
+  "type": "command",
   "id": "unique-command-id",
   "command": "command_name",
   "params": {
-    "target": "@name:widgetName",
-    // command-specific parameters
+    "target": "@name:widgetName"
   },
   "options": {
     "timeout_ms": 5000
@@ -177,6 +99,7 @@ Execute a single command.
 **Response (Success):**
 ```json
 {
+  "type": "response",
   "id": "unique-command-id",
   "success": true,
   "result": {
@@ -189,6 +112,7 @@ Execute a single command.
 **Response (Failure):**
 ```json
 {
+  "type": "response",
   "id": "unique-command-id",
   "success": false,
   "error": {
@@ -202,37 +126,108 @@ Execute a single command.
 
 ---
 
-### POST /transaction
+## Events
 
-Execute multiple commands atomically with optional rollback on failure.
+### Subscribe to Events
 
-**Request Body:**
 ```json
 {
-  "id": "transaction-id",
-  "transaction": true,
-  "rollback_on_failure": true,
-  "steps": [
-    {"id": "step-1", "command": "click", "params": {"target": "@name:nameEdit"}},
-    {"id": "step-2", "command": "type", "params": {"target": "@name:nameEdit", "text": "Hello"}},
-    {"id": "step-3", "command": "click", "params": {"target": "@name:submitButton"}}
-  ]
+  "type": "subscribe",
+  "id": "sub-1",
+  "event_type": "command_executed"
 }
 ```
 
 **Response:**
 ```json
 {
-  "id": "transaction-id",
+  "type": "response",
+  "id": "sub-1",
   "success": true,
-  "completed_steps": 3,
-  "total_steps": 3,
-  "steps_results": [
-    {"step": 0, "command": "click", "success": true},
-    {"step": 1, "command": "type", "success": true},
-    {"step": 2, "command": "click", "success": true}
-  ],
-  "rollback_performed": false
+  "result": {"subscribed": "command_executed"}
+}
+```
+
+### Event Notification
+
+When subscribed events occur:
+```json
+{
+  "type": "event",
+  "event_type": "command_executed",
+  "data": {
+    "command": "click",
+    "params": {"target": "@name:btn"},
+    "success": true,
+    "duration_ms": 15
+  }
+}
+```
+
+### Available Event Types
+
+| Event Type | Description |
+|------------|-------------|
+| `command_executed` | After each command completes |
+| `widget_created` | Widget added to tree |
+| `widget_destroyed` | Widget removed from tree |
+| `property_changed` | Property value changed |
+| `focus_changed` | Focus moved between widgets |
+
+### Unsubscribe
+
+```json
+{
+  "type": "unsubscribe",
+  "id": "unsub-1",
+  "event_type": "command_executed"
+}
+```
+
+Omit `event_type` to unsubscribe from all events.
+
+---
+
+## Recording
+
+### Start Recording
+
+```json
+{
+  "type": "record_start",
+  "id": "rec-1"
+}
+```
+
+### Stop Recording
+
+```json
+{
+  "type": "record_stop",
+  "id": "rec-2"
+}
+```
+
+**Response:**
+```json
+{
+  "type": "response",
+  "id": "rec-2",
+  "success": true,
+  "result": {
+    "name": "Recorded Session",
+    "description": "Actions recorded...",
+    "tests": [
+      {
+        "name": "Recorded Test",
+        "steps": [
+          {"command": "click", "params": {"target": "@name:btn1"}},
+          {"command": "type", "params": {"target": "@name:input", "text": "Hello"}}
+        ],
+        "assertions": []
+      }
+    ]
+  }
 }
 ```
 

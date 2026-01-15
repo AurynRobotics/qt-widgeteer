@@ -1707,8 +1707,8 @@ QJsonObject CommandExecutor::invokeMethod(QObject* object, const QString& method
   }
   else
   {
-    // For methods with arguments, use QMetaObject::invokeMethod with string-based API
-    // This has better cross-Qt-version compatibility
+    // For methods with arguments, use QMetaObject::metacall which works across Qt versions
+    // This bypasses the QGenericArgument/QMetaMethodArgument API differences between Qt 6.4/6.5
 
     // Convert JSON args to appropriate types based on method signature
     QVariantList variantStorage;
@@ -1726,55 +1726,37 @@ QJsonObject CommandExecutor::invokeMethod(QObject* object, const QString& method
       variantStorage.append(argVariant);
     }
 
-    // Use QMetaObject::invokeMethod with Q_ARG for better compatibility
-    QByteArray methodSig = methodName.toLatin1();
+    // Build args array for metacall: args[0] = return value, args[1..n] = parameters
+    constexpr int MAX_ARGS = 10;
+    void* callArgs[MAX_ARGS + 1] = { nullptr };
 
-    if (!hasReturn)
+    // Set up return value storage if method has a return type
+    QVariant returnStorage;
+    if (hasReturn)
     {
-      // Invoke void method with arguments
-      switch (args.size())
-      {
-        case 0:
-          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection);
-          break;
-        case 1:
-          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection,
-                                              Q_ARG(QVariant, variantStorage[0]));
-          break;
-        case 2:
-          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection,
-                                              Q_ARG(QVariant, variantStorage[0]),
-                                              Q_ARG(QVariant, variantStorage[1]));
-          break;
-        default:
-          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection);
-      }
+      int returnType = matchedMethod.returnType();
+      returnStorage = QVariant(QMetaType(returnType));
+      callArgs[0] = returnStorage.data();
     }
-    else
+
+    // Set up parameter pointers
+    for (int i = 0; i < variantStorage.size() && i < MAX_ARGS; ++i)
     {
-      // Invoke with return value - use QVariant for simplicity
-      QVariant ret;
-      switch (args.size())
-      {
-        case 0:
-          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection,
-                                              Q_RETURN_ARG(QVariant, ret));
-          break;
-        case 1:
-          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection,
-                                              Q_RETURN_ARG(QVariant, ret),
-                                              Q_ARG(QVariant, variantStorage[0]));
-          break;
-        case 2:
-          success = QMetaObject::invokeMethod(
-              object, methodSig.constData(), Qt::DirectConnection, Q_RETURN_ARG(QVariant, ret),
-              Q_ARG(QVariant, variantStorage[0]), Q_ARG(QVariant, variantStorage[1]));
-          break;
-        default:
-          success = QMetaObject::invokeMethod(object, methodSig.constData(), Qt::DirectConnection,
-                                              Q_RETURN_ARG(QVariant, ret));
-      }
-      returnValue = ret;
+      callArgs[i + 1] = variantStorage[i].data();
+    }
+
+    // Get method index relative to this class
+    int methodIndex = matchedMethod.methodIndex();
+
+    // Invoke using metacall
+    int result =
+        QMetaObject::metacall(object, QMetaObject::InvokeMetaMethod, methodIndex, callArgs);
+
+    success = (result < 0);  // metacall returns -1 on success, >= 0 on failure
+
+    if (hasReturn && success)
+    {
+      returnValue = returnStorage;
     }
   }
 

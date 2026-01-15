@@ -47,12 +47,25 @@ This starts a sample Qt application with Widgeteer enabled on port 9000.
 ### Verifying the Connection
 
 ```bash
-curl http://localhost:9000/health
+# Using wscat
+wscat -c ws://localhost:9000
+
+# Then send a command
+> {"type":"command","id":"1","command":"get_tree","params":{"depth":1}}
 ```
 
 Expected response:
 ```json
-{"status": "ok", "version": "0.1.0"}
+{"type":"response","id":"1","success":true,"result":{"widgets":[...]}}
+```
+
+Or using Python:
+```python
+from widgeteer_client import SyncWidgeteerClient
+
+with SyncWidgeteerClient(port=9000) as client:
+    tree = client.tree(depth=1)
+    print("Connected!" if tree.success else "Connection failed")
 ```
 
 ---
@@ -219,16 +232,26 @@ Best for: When objectNames aren't unique or available.
 
 Use the `find` command to discover elements:
 
-```bash
-# Find all buttons
-curl -X POST http://localhost:9000/command \
-  -H "Content-Type: application/json" \
-  -d '{"id":"1","command":"find","params":{"query":"@class:QPushButton"}}'
+```python
+from widgeteer_client import SyncWidgeteerClient
+
+with SyncWidgeteerClient(port=9000) as client:
+    result = client.find("@class:QPushButton")
+    for match in result.data.get("matches", []):
+        print(f"{match['objectName']}: {match['path']}")
+```
+
+Or via WebSocket:
+```json
+{"type":"command","id":"1","command":"find","params":{"query":"@class:QPushButton"}}
 ```
 
 Response:
 ```json
 {
+  "type": "response",
+  "id": "1",
+  "success": true,
   "result": {
     "matches": [
       {"path": "mainWindow/submitButton", "class": "QPushButton", "objectName": "submitButton"},
@@ -241,8 +264,13 @@ Response:
 
 ### Exploring the Widget Tree
 
-```bash
-curl "http://localhost:9000/tree?depth=3"
+```python
+result = client.tree(depth=3)
+```
+
+Or via WebSocket:
+```json
+{"type":"command","id":"1","command":"get_tree","params":{"depth":3}}
 ```
 
 This returns the complete widget hierarchy, helping you understand what selectors to use.
@@ -674,31 +702,34 @@ This prints all incoming requests and responses to the console.
 
 ### Explore the Widget Tree
 
-```bash
-# Get full tree
-curl http://localhost:9000/tree | python -m json.tool
+```python
+from widgeteer_client import SyncWidgeteerClient
 
-# Limited depth
-curl "http://localhost:9000/tree?depth=2" | python -m json.tool
+with SyncWidgeteerClient(port=9000) as client:
+    # Get full tree
+    tree = client.tree()
 
-# Include properties
-curl "http://localhost:9000/tree?include_properties=true" | python -m json.tool
+    # Limited depth
+    tree = client.tree(depth=2)
+
+    # Include invisible widgets
+    tree = client.tree(include_invisible=True)
 ```
 
 ### Describe Specific Widget
 
-```bash
-curl -X POST http://localhost:9000/command \
-  -H "Content-Type: application/json" \
-  -d '{"id":"1","command":"describe","params":{"target":"@name:submitButton"}}' | python -m json.tool
+```python
+result = client.describe("@name:submitButton")
+print(f"Class: {result.data['className']}")
+print(f"Properties: {result.data['properties']}")
 ```
 
 ### List Available Properties
 
-```bash
-curl -X POST http://localhost:9000/command \
-  -H "Content-Type: application/json" \
-  -d '{"id":"1","command":"list_properties","params":{"target":"@name:myWidget"}}' | python -m json.tool
+```python
+result = client.command("list_properties", {"target": "@name:myWidget"})
+for prop in result.data.get("properties", []):
+    print(f"  {prop['name']}: {prop['type']}")
 ```
 
 ### Take Screenshots for Visual Debugging
@@ -829,28 +860,37 @@ server.setAllowedHosts({"localhost", "127.0.0.1"});
 
 ## Appendix: Python Client Reference
 
-### WidgeteerClient
+### Async Client (WidgeteerClient)
 
 ```python
 from widgeteer_client import WidgeteerClient
+import asyncio
 
-client = WidgeteerClient(
-    host="localhost",  # Server host
-    port=9000,         # Server port
-    timeout=30.0       # Request timeout in seconds
-)
+async def main():
+    async with WidgeteerClient(host="localhost", port=9000, token="optional") as client:
+        result = await client.click("@name:button")
+
+asyncio.run(main())
+```
+
+### Sync Client (SyncWidgeteerClient)
+
+```python
+from widgeteer_client import SyncWidgeteerClient
+
+with SyncWidgeteerClient(host="localhost", port=9000) as client:
+    result = client.click("@name:button")
 ```
 
 ### Methods
 
 | Method | Description |
 |--------|-------------|
-| `health()` | Check server status |
-| `schema()` | Get command schema |
+| `connect()` | Connect to server |
+| `disconnect()` | Disconnect from server |
 | `tree(root, depth, include_invisible)` | Get widget tree |
 | `screenshot(target, format)` | Capture screenshot |
 | `command(cmd, params, options, cmd_id)` | Execute command |
-| `transaction(steps, tx_id, rollback_on_failure)` | Execute transaction |
 | `click(target, button, pos)` | Click widget |
 | `double_click(target, pos)` | Double-click |
 | `right_click(target, pos)` | Right-click |
@@ -872,3 +912,7 @@ client = WidgeteerClient(
 | `wait_idle(timeout_ms)` | Wait for idle |
 | `sleep(ms)` | Hard delay |
 | `assert_property(target, property, operator, value)` | Assert condition |
+| `start_recording()` | Start recording commands |
+| `stop_recording()` | Stop recording, get results |
+| `subscribe(event_type, handler)` | Subscribe to events (async only) |
+| `unsubscribe(event_type)` | Unsubscribe from events |

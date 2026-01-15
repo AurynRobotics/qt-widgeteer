@@ -4,16 +4,18 @@ A Qt6 UI testing and automation framework designed for LLM agent control.
 
 ## Overview
 
-Widgeteer is a minimally invasive library that enables Qt6 QWidgets applications to be controlled programmatically via a JSON-based HTTP API. Unlike traditional testing frameworks that assume pre-written test scripts, Widgeteer is designed with LLM agents in mind — providing full UI introspection so an agent can discover, explore, and interact with the application without prior knowledge of its structure.
+Widgeteer is a minimally invasive library that enables Qt6 QWidgets applications to be controlled programmatically via a JSON-based WebSocket API. Unlike traditional testing frameworks that assume pre-written test scripts, Widgeteer is designed with LLM agents in mind — providing full UI introspection so an agent can discover, explore, and interact with the application without prior knowledge of its structure.
 
 ## Key Features
 
 - **LLM-Friendly**: Structured JSON responses with enough context for an agent to reason about UI state
-- **Discoverable**: Agents can explore the UI hierarchy without prior knowledge via `GET /tree`
+- **Discoverable**: Agents can explore the UI hierarchy without prior knowledge via `get_tree` command
 - **Atomic & Composite**: Supports single actions and multi-step transactions with automatic rollback
+- **Event Subscription**: Subscribe to UI events for reactive automation
+- **Action Recording**: Record interactions for playback or test generation
 - **Synchronous by Default**: Actions block until UI is stable, with configurable timeouts
 - **Minimal Integration**: 2-3 lines of code to add to any Qt6 application
-- **Zero External Dependencies**: Uses only Qt6 modules (Core, Widgets, Gui, Test, Network)
+- **Zero External Dependencies**: Uses only Qt6 modules (Core, Widgets, Gui, Test, WebSockets)
 
 ## Quick Start
 
@@ -39,60 +41,79 @@ int main(int argc, char* argv[]) {
 ### Python Client Example
 
 ```python
-from widgeteer_client import WidgeteerClient
+from widgeteer_client import SyncWidgeteerClient
 
-client = WidgeteerClient(port=9000)
+# Synchronous client with context manager
+with SyncWidgeteerClient(port=9000) as client:
+    # Get the widget tree
+    tree = client.tree()
 
-# Get the widget tree
-tree = client.tree()
+    # Click a button
+    client.click("@name:submitButton")
 
-# Click a button
-client.click("@name:submitButton")
+    # Type text into a field
+    client.type_text("@name:nameEdit", "Hello World", clear_first=True)
 
-# Type text into a field
-client.type_text("@name:nameEdit", "Hello World", clear_first=True)
+    # Check a property value
+    result = client.assert_property("@name:nameEdit", "text", "==", "Hello World")
+    print(f"Assertion passed: {result.data['passed']}")
 
-# Check a property value
-result = client.assert_property("@name:nameEdit", "text", "==", "Hello World")
-print(f"Assertion passed: {result.data['result']['passed']}")
+    # Set a combo box selection
+    client.set_value("@name:roleComboBox", 2)
 
-# Set a combo box selection
-client.set_value("@name:roleComboBox", 2)
-
-# Wait for UI to be idle
-client.wait_idle(timeout_ms=1000)
+    # Wait for UI to be idle
+    client.wait_idle(timeout_ms=1000)
 ```
 
-### Using curl
+### Async Client Example
+
+```python
+from widgeteer_client import WidgeteerClient
+import asyncio
+
+async def main():
+    async with WidgeteerClient(port=9000) as client:
+        await client.click("@name:submitButton")
+        await client.type_text("@name:nameEdit", "Hello World")
+
+asyncio.run(main())
+```
+
+### Using wscat (WebSocket CLI)
 
 ```bash
-# Check server health
-curl http://localhost:9000/health
+# Connect to server
+wscat -c ws://localhost:9000
 
 # Get widget tree
-curl http://localhost:9000/tree
+> {"type":"command","id":"1","command":"get_tree","params":{}}
 
 # Click a button
-curl -X POST http://localhost:9000/command \
-  -H "Content-Type: application/json" \
-  -d '{"id":"1","command":"click","params":{"target":"@name:submitButton"}}'
+> {"type":"command","id":"2","command":"click","params":{"target":"@name:submitButton"}}
 
 # Type text
-curl -X POST http://localhost:9000/command \
-  -H "Content-Type: application/json" \
-  -d '{"id":"2","command":"type","params":{"target":"@name:nameEdit","text":"Hello","clear_first":true}}'
+> {"type":"command","id":"3","command":"type","params":{"target":"@name:nameEdit","text":"Hello","clear_first":true}}
+
+# Subscribe to events
+> {"type":"subscribe","id":"4","event_type":"command_executed"}
+
+# Start recording
+> {"type":"record_start","id":"5"}
 ```
 
-## API Endpoints
+## WebSocket Protocol
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Server status and version |
-| GET | `/schema` | Full command schema (for LLM context) |
-| GET | `/tree` | Widget hierarchy as JSON |
-| GET | `/screenshot` | Screen capture (base64 PNG) |
-| POST | `/command` | Execute a single command |
-| POST | `/transaction` | Execute multiple commands atomically |
+All communication happens over WebSocket (`ws://host:port`). Messages are JSON objects with a `type` field.
+
+| Message Type | Direction | Description |
+|--------------|-----------|-------------|
+| `command` | Client → Server | Execute a command |
+| `response` | Server → Client | Command response |
+| `event` | Server → Client | Subscribed event notification |
+| `subscribe` | Client → Server | Subscribe to event type |
+| `unsubscribe` | Client → Server | Unsubscribe from events |
+| `record_start` | Client → Server | Start recording commands |
+| `record_stop` | Client → Server | Stop recording, get recorded JSON |
 
 ## Element Selectors
 
@@ -175,7 +196,7 @@ Widgeteer supports multiple ways to address UI elements:
 ### Requirements
 
 - CMake 3.18+
-- Qt6 (Core, Widgets, Gui, Test, Network)
+- Qt6 (Core, Widgets, Gui, Test, WebSockets)
 - C++17 compatible compiler
 
 ### Build Commands
@@ -258,14 +279,25 @@ server.setPort(9001);
 // Enable request logging
 server.enableLogging(true);
 
-// Enable CORS (default: true)
-server.enableCORS(true);
+// Set API key for authentication (clients connect with ws://host:port?token=key)
+server.setApiKey("your-secret-key");
 
-// Restrict to specific hosts
+// Restrict to specific hosts (default: localhost only)
 server.setAllowedHosts({"localhost", "127.0.0.1"});
 
 // Limit introspection to specific widget tree
 server.setRootWidget(mainWindow);
+
+// Start recording commands for playback
+server.startRecording();
+
+// Register custom commands
+server.registerCommand("myCommand", [](const QJsonObject& params) {
+    return QJsonObject{{"result", "success"}};
+});
+
+// Expose QObject for method calls
+server.registerObject("myService", myServiceObject);
 
 server.start();
 ```
