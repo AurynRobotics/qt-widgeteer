@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-linux:
+    name: Build on Linux
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.3'
+          host: 'linux'
+          target: 'desktop'
+          arch: 'gcc_64'
+          modules: 'qtnetworkauth'
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DWIDGETEER_BUILD_SAMPLE=ON
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: widgeteer-linux
+          path: |
+            build/libwidgeteer.a
+            build/sample/widgeteer_sample
+
+  build-linux-debug:
+    name: Build Debug on Linux
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.3'
+          host: 'linux'
+          target: 'desktop'
+          arch: 'gcc_64'
+          modules: 'qtnetworkauth'
+
+      - name: Configure CMake (Debug)
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DWIDGETEER_BUILD_SAMPLE=ON
+
+      - name: Build (Debug)
+        run: cmake --build build --parallel $(nproc)
+
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-22.04
+    needs: build-linux
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.5.3'
+          host: 'linux'
+          target: 'desktop'
+          arch: 'gcc_64'
+          modules: 'qtnetworkauth'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libxcb-xinerama0 libxcb-cursor0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: widgeteer-linux
+          path: build
+
+      - name: Make executable
+        run: chmod +x build/sample/widgeteer_sample
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run integration tests
+        run: |
+          # Start Xvfb for headless GUI testing
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1024x768x24 &
+          sleep 2
+
+          # Start the sample application in background
+          ./build/sample/widgeteer_sample 9000 &
+          APP_PID=$!
+          sleep 3
+
+          # Run the Python tests
+          cd tests
+          python test_executor.py sample_tests.json --port 9000 --verbose || TEST_EXIT=$?
+
+          # Clean up
+          kill $APP_PID 2>/dev/null || true
+
+          exit ${TEST_EXIT:-0}
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-17
+
+      - name: Check formatting
+        run: |
+          find include src sample -name '*.cpp' -o -name '*.h' | \
+            xargs clang-format-17 --dry-run --Werror

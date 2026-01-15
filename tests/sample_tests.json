@@ -1,0 +1,313 @@
+{
+  "name": "Sample Application Tests",
+  "description": "Tests for the Widgeteer sample Qt application",
+  "tests": [
+    {
+      "name": "Application starts correctly",
+      "steps": [
+        {
+          "command": "exists",
+          "params": {
+            "target": "@name:mainWindow"
+          }
+        },
+        {
+          "command": "is_visible",
+          "params": {
+            "target": "@name:mainWindow"
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "target": "@name:mainWindow",
+          "property": "windowTitle",
+          "operator": "contains",
+          "value": "Widgeteer"
+        }
+      ]
+    },
+    {
+      "name": "Form tab contains expected widgets",
+      "steps": [
+        {
+          "command": "exists",
+          "params": {
+            "target": "@name:nameEdit"
+          }
+        },
+        {
+          "command": "exists",
+          "params": {
+            "target": "@name:emailEdit"
+          }
+        },
+        {
+          "command": "exists",
+          "params": {
+            "target": "@name:submitButton"
+          }
+        },
+        {
+          "command": "exists",
+          "params": {
+            "target": "@name:clearButton"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Type text into name field",
+      "steps": [
+        {
+          "command": "click",
+          "params": {
+            "target": "@name:nameEdit"
+          }
+        },
+        {
+          "command": "type",
+          "params": {
+            "target": "@name:nameEdit",
+            "text": "Test User",
+            "clear_first": true
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "target": "@name:nameEdit",
+          "property": "text",
+          "operator": "==",
+          "value": "Test User"
+        }
+      ]
+    },
+    {
+      "name": "Type text into email field",
+      "steps": [
+        {
+          "command": "click",
+          "params": {
+            "target": "@name:emailEdit"
+          }
+        },
+        {
+          "command": "type",
+          "params": {
+            "target": "@name:emailEdit",
+            "text": "test@example.com",
+            "clear_first": true
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "target": "@name:emailEdit",
+          "property": "text",
+          "operator": "==",
+          "value": "test@example.com"
+        }
+      ]
+    },
+    {
+      "name": "Change combo box selection",
+      "steps": [
+        {
+          "command": "set_value",
+          "params": {
+            "target": "@name:roleComboBox",
+            "value": 2
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "target": "@name:roleComboBox",
+          "property": "currentIndex",
+          "operator": "==",
+          "value": "2"
+        }
+      ]
+    },
+    {
+      "name": "Change spin box value",
+      "steps": [
+        {
+          "command": "set_value",
+          "params": {
+            "target": "@name:ageSpinBox",
+            "value": 30
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "target": "@name:ageSpinBox",
+          "property": "value",
+          "operator": "==",
+          "value": "30"
+        }
+      ]
+    },
+    {
+      "name": "Toggle checkbox",
+      "steps": [
+        {
+          "command": "click",
+          "params": {
+            "target": "@name:enableCheckBox"
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "target": "@name:enableCheckBox",
+          "property": "checked",
+          "operator": "==",
+          "value": "false"
+        }
+      ]
+    },
+    {
+      "name": "Click submit button",
+      "steps": [
+        {
+          "command": "click",
+          "params": {
+            "target": "@name:submitButton"
+          }
+        },
+        {
+          "command": "wait_idle",
+          "params": {
+            "timeout_ms": 1000
+          }
+        }
+      ]
+    },
+    {
+      "name": "Clear form",
+      "steps": [
+        {
+          "command": "click",
+          "params": {
+            "target": "@name:clearButton"
+          }
+        },
+        {
+          "command": "wait_idle",
+          "params": {
+            "timeout_ms": 1000
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "target": "@name:nameEdit",
+          "property": "text",
+          "operator": "==",
+          "value": ""
+        },
+        {
+          "target": "@name:emailEdit",
+          "property": "text",
+          "operator": "==",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "name": "Switch to Controls tab",
+      "steps": [
+        {
+          "command": "set_value",
+          "params": {
+            "target": "@name:tabWidget",
+            "value": 1
+          }
+        },
+        {
+          "command": "wait_idle",
+          "params": {
+            "timeout_ms": 500
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "target": "@name:tabWidget",
+          "property": "currentIndex",
+          "operator": "==",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "name": "Move slider",
+      "steps": [
+        {
+          "command": "set_value",
+          "params": {
+            "target": "@name:slider",
+            "value": 75
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "target": "@name:slider",
+          "property": "value",
+          "operator": "==",
+          "value": "75"
+        },
+        {
+          "target": "@name:progressBar",
+          "property": "value",
+          "operator": "==",
+          "value": "75"
+        }
+      ]
+    },
+    {
+      "name": "Click action button",
+      "steps": [
+        {
+          "command": "click",
+          "params": {
+            "target": "@name:actionButton"
+          }
+        },
+        {
+          "command": "wait_idle",
+          "params": {
+            "timeout_ms": 1000
+          }
+        }
+      ]
+    },
+    {
+      "name": "Find all buttons in application",
+      "steps": [
+        {
+          "command": "find",
+          "params": {
+            "query": "@class:QPushButton",
+            "max_results": 20
+          }
+        }
+      ]
+    }
+  ],
+  "setup": [
+    {
+      "command": "wait",
+      "params": {
+        "target": "@name:mainWindow",
+        "condition": "visible",
+        "timeout_ms": 5000
+      }
+    }
+  ],
+  "teardown": []
+}
