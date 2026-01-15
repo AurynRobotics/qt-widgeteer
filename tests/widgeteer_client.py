@@ -472,6 +472,10 @@ class SyncWidgeteerClient:
     def stop_recording(self) -> Response:
         return self._run(self._client.stop_recording())
 
+    def assert_property(self, target: str, property_name: str, operator: str,
+                        value: Any) -> Response:
+        return self._run(self._client.assert_property(target, property_name, operator, value))
+
     def __enter__(self):
         self.connect()
         return self
