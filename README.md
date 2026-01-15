@@ -1,5 +1,7 @@
 # Widgeteer
 
+[![CI](https://github.com/AurynRobotics/qt-widgeteer/actions/workflows/ci.yml/badge.svg)](https://github.com/AurynRobotics/qt-widgeteer/actions/workflows/ci.yml)
+
 A Qt6 UI testing and automation framework designed for LLM agent control.
 
 ## Overview
