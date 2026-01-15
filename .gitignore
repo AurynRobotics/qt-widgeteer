@@ -1,0 +1,20 @@
+# Build directories
+build/
+cmake-build-*/
+
+# IDE
+.idea/
+.vscode/
+*.user
+*.swp
+
+# Clangd cache
+.cache/
+.clangd/
+compile_commands.json
+
+# Generated files
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
