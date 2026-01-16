@@ -167,6 +167,69 @@ private slots:
     QCOMPARE(error.value("partial_match").toString(), QString("path/to"));
     QCOMPARE(error.value("available_children").toArray().size(), 2);
   }
+
+  void testBuildElementNotFoundErrorMinimal() {
+    // Test with empty partialMatch and empty availableChildren
+    QJsonObject error = buildElementNotFoundError("widget", "", QStringList{});
+
+    QCOMPARE(error.value("searched_path").toString(), QString("widget"));
+    QVERIFY(!error.contains("partial_match"));
+    QVERIFY(!error.contains("available_children"));
+  }
+
+  void testTransactionResponseToJson() {
+    TransactionResponse resp;
+    resp.id = "tx-response-1";
+    resp.success = true;
+    resp.completedSteps = 3;
+    resp.totalSteps = 3;
+    resp.rollbackPerformed = false;
+    resp.stepsResults = QJsonArray{ QJsonObject{ { "step", 0 }, { "success", true } },
+                                    QJsonObject{ { "step", 1 }, { "success", true } },
+                                    QJsonObject{ { "step", 2 }, { "success", true } } };
+
+    QJsonObject json = resp.toJson();
+
+    QCOMPARE(json.value("id").toString(), QString("tx-response-1"));
+    QVERIFY(json.value("success").toBool());
+    QCOMPARE(json.value("completed_steps").toInt(), 3);
+    QCOMPARE(json.value("total_steps").toInt(), 3);
+    QVERIFY(!json.value("rollback_performed").toBool());
+    QCOMPARE(json.value("steps_results").toArray().size(), 3);
+  }
+
+  void testResponseToJsonWithoutDuration() {
+    // Response with durationMs == 0 should not include duration_ms
+    Response resp = Response::ok("cmd-no-duration", QJsonObject{ { "done", true } });
+    resp.durationMs = 0;
+
+    QJsonObject json = resp.toJson();
+
+    QVERIFY(!json.contains("duration_ms"));
+    QVERIFY(json.value("success").toBool());
+  }
+
+  void testResponseToJsonWithEmptyResult() {
+    // Success response with empty result should not include result key
+    Response resp = Response::ok("cmd-empty", QJsonObject{});
+
+    QJsonObject json = resp.toJson();
+
+    QVERIFY(json.value("success").toBool());
+    QVERIFY(!json.contains("result"));
+  }
+
+  void testErrorDetailsToJsonWithoutDetails() {
+    // Error without details should not include details key
+    Response resp = Response::fail("cmd-err", "ERR", "Error message");
+
+    QJsonObject json = resp.toJson();
+    QJsonObject errorJson = json.value("error").toObject();
+
+    QCOMPARE(errorJson.value("code").toString(), QString("ERR"));
+    QCOMPARE(errorJson.value("message").toString(), QString("Error message"));
+    QVERIFY(!errorJson.contains("details"));
+  }
 };
 
 QTEST_MAIN(TestProtocol)

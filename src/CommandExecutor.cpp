@@ -37,6 +37,58 @@
 namespace widgeteer {
 
 CommandExecutor::CommandExecutor(QObject* parent) : QObject(parent), synchronizer_(&finder_) {
+  initializeCommandRegistry();
+}
+
+void CommandExecutor::registerCommand(const QString& name, CommandHandler handler) {
+  commandRegistry_.insert(name, std::move(handler));
+}
+
+void CommandExecutor::initializeCommandRegistry() {
+  // Introspection commands
+  registerCommand("get_tree", [this](const QJsonObject& p) { return cmdGetTree(p); });
+  registerCommand("find", [this](const QJsonObject& p) { return cmdFind(p); });
+  registerCommand("describe", [this](const QJsonObject& p) { return cmdDescribe(p); });
+  registerCommand("get_property", [this](const QJsonObject& p) { return cmdGetProperty(p); });
+  registerCommand("list_properties", [this](const QJsonObject& p) { return cmdListProperties(p); });
+  registerCommand("get_actions", [this](const QJsonObject& p) { return cmdGetActions(p); });
+  registerCommand("get_form_fields", [this](const QJsonObject& p) { return cmdGetFormFields(p); });
+
+  // Action commands
+  registerCommand("click", [this](const QJsonObject& p) { return cmdClick(p); });
+  registerCommand("double_click", [this](const QJsonObject& p) { return cmdDoubleClick(p); });
+  registerCommand("right_click", [this](const QJsonObject& p) { return cmdRightClick(p); });
+  registerCommand("type", [this](const QJsonObject& p) { return cmdType(p); });
+  registerCommand("key", [this](const QJsonObject& p) { return cmdKey(p); });
+  registerCommand("key_sequence", [this](const QJsonObject& p) { return cmdKeySequence(p); });
+  registerCommand("drag", [this](const QJsonObject& p) { return cmdDrag(p); });
+  registerCommand("scroll", [this](const QJsonObject& p) { return cmdScroll(p); });
+  registerCommand("hover", [this](const QJsonObject& p) { return cmdHover(p); });
+  registerCommand("focus", [this](const QJsonObject& p) { return cmdFocus(p); });
+
+  // State commands
+  registerCommand("set_property", [this](const QJsonObject& p) { return cmdSetProperty(p); });
+  registerCommand("invoke", [this](const QJsonObject& p) { return cmdInvoke(p); });
+  registerCommand("set_value", [this](const QJsonObject& p) { return cmdSetValue(p); });
+
+  // Verification commands
+  registerCommand("screenshot", [this](const QJsonObject& p) { return cmdScreenshot(p); });
+  registerCommand("assert", [this](const QJsonObject& p) { return cmdAssert(p); });
+  registerCommand("exists", [this](const QJsonObject& p) { return cmdExists(p); });
+  registerCommand("is_visible", [this](const QJsonObject& p) { return cmdIsVisible(p); });
+
+  // Synchronization commands
+  registerCommand("wait", [this](const QJsonObject& p) { return cmdWait(p); });
+  registerCommand("wait_idle", [this](const QJsonObject& p) { return cmdWaitIdle(p); });
+  registerCommand("wait_signal", [this](const QJsonObject& p) { return cmdWaitSignal(p); });
+  registerCommand("sleep", [this](const QJsonObject& p) { return cmdSleep(p); });
+  registerCommand("quit", [this](const QJsonObject& p) { return cmdQuit(p); });
+
+  // Extensibility commands
+  registerCommand("call", [this](const QJsonObject& p) { return cmdCall(p); });
+  registerCommand("list_objects", [this](const QJsonObject& p) { return cmdListObjects(p); });
+  registerCommand("list_custom_commands",
+                  [this](const QJsonObject& p) { return cmdListCustomCommands(p); });
 }
 
 Response CommandExecutor::execute(const Command& cmd) {
@@ -129,112 +181,9 @@ TransactionResponse CommandExecutor::execute(const Transaction& tx) {
 }
 
 QJsonObject CommandExecutor::dispatch(const QString& command, const QJsonObject& params) {
-  // Introspection commands
-  if (command == "get_tree") {
-    return cmdGetTree(params);
-  }
-  if (command == "find") {
-    return cmdFind(params);
-  }
-  if (command == "describe") {
-    return cmdDescribe(params);
-  }
-  if (command == "get_property") {
-    return cmdGetProperty(params);
-  }
-  if (command == "list_properties") {
-    return cmdListProperties(params);
-  }
-  if (command == "get_actions") {
-    return cmdGetActions(params);
-  }
-  if (command == "get_form_fields") {
-    return cmdGetFormFields(params);
-  }
-
-  // Action commands
-  if (command == "click") {
-    return cmdClick(params);
-  }
-  if (command == "double_click") {
-    return cmdDoubleClick(params);
-  }
-  if (command == "right_click") {
-    return cmdRightClick(params);
-  }
-  if (command == "type") {
-    return cmdType(params);
-  }
-  if (command == "key") {
-    return cmdKey(params);
-  }
-  if (command == "key_sequence") {
-    return cmdKeySequence(params);
-  }
-  if (command == "drag") {
-    return cmdDrag(params);
-  }
-  if (command == "scroll") {
-    return cmdScroll(params);
-  }
-  if (command == "hover") {
-    return cmdHover(params);
-  }
-  if (command == "focus") {
-    return cmdFocus(params);
-  }
-
-  // State commands
-  if (command == "set_property") {
-    return cmdSetProperty(params);
-  }
-  if (command == "invoke") {
-    return cmdInvoke(params);
-  }
-  if (command == "set_value") {
-    return cmdSetValue(params);
-  }
-
-  // Verification commands
-  if (command == "screenshot") {
-    return cmdScreenshot(params);
-  }
-  if (command == "assert") {
-    return cmdAssert(params);
-  }
-  if (command == "exists") {
-    return cmdExists(params);
-  }
-  if (command == "is_visible") {
-    return cmdIsVisible(params);
-  }
-
-  // Synchronization commands
-  if (command == "wait") {
-    return cmdWait(params);
-  }
-  if (command == "wait_idle") {
-    return cmdWaitIdle(params);
-  }
-  if (command == "wait_signal") {
-    return cmdWaitSignal(params);
-  }
-  if (command == "sleep") {
-    return cmdSleep(params);
-  }
-  if (command == "quit") {
-    return cmdQuit(params);
-  }
-
-  // Extensibility commands
-  if (command == "call") {
-    return cmdCall(params);
-  }
-  if (command == "list_objects") {
-    return cmdListObjects(params);
-  }
-  if (command == "list_custom_commands") {
-    return cmdListCustomCommands(params);
+  // Check built-in command registry
+  if (auto it = commandRegistry_.find(command); it != commandRegistry_.end()) {
+    return it.value()(params);
   }
 
   // Check for custom command handlers

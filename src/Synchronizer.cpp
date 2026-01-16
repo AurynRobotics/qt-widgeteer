@@ -110,19 +110,30 @@ Synchronizer::WaitResult Synchronizer::waitForSignal(QObject* obj, const char* s
   QEventLoop loop;
 
   // Connect using old-style SIGNAL/SLOT
-  QObject::connect(obj, signal, &loop, SLOT(quit()));
+  auto connection = QObject::connect(obj, signal, &loop, SLOT(quit()));
+  if (!connection) {
+    result.error = "Failed to connect to signal";
+    return result;
+  }
 
-  // Setup timeout
+  // We need to know if signal or timeout caused loop exit
+  // Use a lambda slot to set the flag when timeout fires
+  bool timedOut = false;
   QTimer timeoutTimer;
   timeoutTimer.setSingleShot(true);
-  QObject::connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
+  QObject::connect(&timeoutTimer, &QTimer::timeout, [&loop, &timedOut]() {
+    timedOut = true;
+    loop.quit();
+  });
   timeoutTimer.start(timeoutMs);
 
-  // Track if signal was received by checking elapsed time vs timeout
   loop.exec();
 
+  // Disconnect to avoid double-quit scenarios
+  QObject::disconnect(connection);
+
   result.elapsedMs = static_cast<int>(timer.elapsed());
-  result.success = (result.elapsedMs < timeoutMs);
+  result.success = !timedOut;
 
   if (!result.success) {
     result.error = "Timeout waiting for signal";

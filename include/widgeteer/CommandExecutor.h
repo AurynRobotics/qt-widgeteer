@@ -88,6 +88,11 @@ private:
   // Dispatch command by name
   QJsonObject dispatch(const QString& command, const QJsonObject& params);
 
+  // Command registry
+  void initializeCommandRegistry();
+  void registerCommand(const QString& name, CommandHandler handler);
+  QHash<QString, CommandHandler> commandRegistry_;
+
   // Resolve target widget from params
   QWidget* resolveTarget(const QJsonObject& params, QString& errorOut);
 
