@@ -67,6 +67,19 @@ with SyncWidgeteerClient(port=9000) as client:
     tree = client.tree()                              # Discover all widgets
     client.click("@name:submitButton")                # Click by object name
     client.type_text("@name:emailField", "test@example.com")
+    client.wait("@name:statusLabel", condition="visible")  # Wait for UI update
+    status = client.get_property("@name:statusLabel", "text").value
+```
+
+Or send raw JSON commands via any WebSocket client:
+
+```bash
+wscat -c ws://localhost:9000
+> {"type":"command","id":"1","command":"get_tree","params":{}}
+> {"type":"command","id":"2","command":"click","params":{"target":"@name:submitButton"}}
+> {"type":"command","id":"3","command":"type","params":{"target":"@name:emailField","text":"test@example.com"}}
+> {"type":"command","id":"4","command":"wait","params":{"target":"@name:statusLabel","condition":"visible"}}
+> {"type":"command","id":"5","command":"get_property","params":{"target":"@name:statusLabel","property":"text"}}
 ```
 
 ## Building
