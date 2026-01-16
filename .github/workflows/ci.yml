@@ -50,8 +50,8 @@ jobs:
             build/libwidgeteer.a
             build/sample/widgeteer_sample
 
-  build-linux-debug:
-    name: Build Debug on Linux
+  coverage:
+    name: Code Coverage
     runs-on: ubuntu-22.04
 
     steps:
@@ -67,15 +67,57 @@ jobs:
           arch: 'gcc_64'
           modules: 'qtnetworkauth qtwebsockets'
 
-      - name: Configure CMake (Debug)
+      - name: Install lcov
+        run: sudo apt-get update && sudo apt-get install -y lcov
+
+      - name: Configure CMake (Debug with coverage)
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CXX_COMPILER=g++ \
-            -DWIDGETEER_BUILD_SAMPLE=ON
+            -DWIDGETEER_BUILD_SAMPLE=ON \
+            -DWIDGETEER_BUILD_TESTS=ON
 
-      - name: Build (Debug)
+      - name: Build
         run: cmake --build build --parallel $(nproc)
+
+      - name: Run tests and generate coverage
+        run: |
+          # Reset counters
+          lcov --zerocounters --directory build
+
+          # Capture baseline
+          lcov --capture --initial --directory build --output-file coverage_base.info
+
+          # Run tests
+          cd build && ctest --output-on-failure && cd ..
+
+          # Capture test coverage
+          lcov --capture --directory build --output-file coverage_test.info
+
+          # Combine
+          lcov --add-tracefile coverage_base.info --add-tracefile coverage_test.info --output-file coverage_combined.info
+
+          # Filter out system/Qt/test files
+          lcov --remove coverage_combined.info \
+            '/usr/*' \
+            '*/Qt/*' \
+            '*/qt6/*' \
+            '*/tests/*' \
+            '*moc_*' \
+            '*_autogen/*' \
+            --output-file coverage.info
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.info
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   test-integration:
     name: Integration Tests
