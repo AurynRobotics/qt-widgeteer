@@ -39,6 +39,8 @@ xvfb-run -a python3 test_executor.py sample_tests.json --port 9000
 
 ## Architecture
 
+For detailed architecture with modification patterns, see [docs/architecture.md](docs/architecture.md).
+
 **Core Components (src/):**
 - `Server.cpp` - WebSocket server, client management, public API
 - `CommandExecutor.cpp` - Command dispatch (25+ commands), custom command registration
