@@ -110,14 +110,25 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      - name: Extract coverage percentage
+        id: coverage
+        run: |
+          COVERAGE=$(lcov --summary coverage.info 2>&1 | grep -Po 'lines\.*: \K[0-9.]+')
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "Coverage: $COVERAGE%"
+
+      - name: Update coverage badge
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: schneegans/dynamic-badges-action@v1.7.0
         with:
-          files: coverage.info
-          fail_ci_if_error: false
-          verbose: true
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: ${{ vars.COVERAGE_GIST_ID }}
+          filename: coverage.json
+          label: coverage
+          message: ${{ steps.coverage.outputs.percentage }}%
+          valColorRange: ${{ steps.coverage.outputs.percentage }}
+          maxColorRange: 100
+          minColorRange: 0
 
   test-integration:
     name: Integration Tests

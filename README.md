@@ -1,7 +1,7 @@
 # Qt Widgeteer
 
 [![CI](https://github.com/AurynRobotics/qt-widgeteer/actions/workflows/ci.yml/badge.svg)](https://github.com/AurynRobotics/qt-widgeteer/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/AurynRobotics/qt-widgeteer/branch/main/graph/badge.svg)](https://codecov.io/gh/AurynRobotics/qt-widgeteer)
+![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/facontidavide/df13d7b2236dce6d07faf1f4ff05f14a/raw/coverage.json)
 
 A Qt6 UI testing and automation framework designed for LLM agent control, GUI automation and integration testing.
 
