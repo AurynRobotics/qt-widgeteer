@@ -1,3 +1,6 @@
+![widgeteer_header.png](widgeteer_header.png)
+
+
 # Qt Widgeteer
 
 [![CI](https://github.com/AurynRobotics/qt-widgeteer/actions/workflows/ci.yml/badge.svg)](https://github.com/AurynRobotics/qt-widgeteer/actions/workflows/ci.yml)

@@ -18,3 +18,5 @@ compile_commands.json
 moc_*.cpp
 qrc_*.cpp
 ui_*.h
+/coverage/*
+/coverage_html/*
