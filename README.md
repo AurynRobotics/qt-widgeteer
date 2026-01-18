@@ -8,7 +8,11 @@
 
 A Qt6 UI testing and automation framework designed for LLM agent control, GUI automation and integration testing.
 
-### **2 lines of code** to make any Qt app controllable by AI agents, external integration tests, scripts, or remote clients.
+You just need **2 lines of code** to make any Qt app controllable by:
+ - AI agents
+ - external integration tests
+ - scripts, or
+ - remote clients.
 
 ![server_client.png](server_client.png)
 
