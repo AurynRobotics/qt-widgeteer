@@ -115,6 +115,16 @@ jobs:
           echo "## Coverage Report" >> $GITHUB_STEP_SUMMARY
           lcov --summary coverage.info 2>&1 | tee -a $GITHUB_STEP_SUMMARY
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.info
+          flags: unittests
+          name: qt-widgeteer-coverage
+          fail_ci_if_error: true
+          verbose: true
+
   test-integration:
     name: Integration Tests
     runs-on: ubuntu-22.04
