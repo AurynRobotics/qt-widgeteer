@@ -8,24 +8,39 @@
 
 A Qt6 UI testing and automation framework designed for LLM agent control, GUI automation and integration testing.
 
-## Why Widgeteer?
+### **2 lines of code** to make any Qt app controllable by AI agents, external integration tests, scripts, or remote clients.
 
-Traditional UI testing frameworks assume you write test scripts upfront. But what if an AI agent needs to explore and interact with your application dynamically?
+![server_client.png](server_client.png)
 
-Widgeteer exposes your Qt6 application's UI through a WebSocket API that lets any client — human or AI — discover widgets, read their state, and perform actions. An LLM agent can call `get_tree` to see the entire UI hierarchy, then click buttons, fill forms, and verify results without any prior knowledge of your application's structure.
 
-**Use cases:**
-- Let AI agents automate complex workflows in your Qt application
-- Build test scripts interactively by exploring the live UI
-- Record user interactions for playback or test generation
-- Remote control Qt applications from any language with WebSocket support
+```
+User: "Fill out the registration form with test data and submit it"
+
+LLM:  I'll discover the form fields first.
+      > get_form_fields()
+      Found: Name (text), Email (text), Age (spinbox)
+
+      Now I'll fill out the form with test data.
+      > input_text("#nameEdit", "Alice Smith")     ✓
+      > input_text("#emailEdit", "alice@example.com")  ✓
+      > set_value("#ageSpinBox", 28)               ✓
+      > click("#submitButton")                     ✓
+
+      Let me verify the submission worked.
+      > get_property("#outputText", "plainText")
+      → "Form submitted: Alice Smith <alice@example.com>"
+
+      Done! The form was submitted successfully.
+```
 
 ## Key Features
 
 - **Discoverable UI**: Agents explore the widget hierarchy without prior knowledge
-- **Minimal Integration**: 2-3 lines of code to instrument any Qt6 application
+- **Minimal Integration**: 2 lines of code to instrument any Qt6 application
 - **Zero Dependencies**: Uses only Qt6 modules (no external libraries)
 - **Language Agnostic**: JSON over WebSocket works from Python, JavaScript, or raw CLI
+- **Record & Replay**: Capture user interactions as replayable JSON test scripts
+- **Remote Control**: Automate Qt applications from any language with WebSocket support
 
 ## What Can You Do?
 
