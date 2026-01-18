@@ -85,6 +85,25 @@ wscat -c ws://localhost:9000
 > {"type":"command","id":"5","command":"get_property","params":{"target":"@name:statusLabel","property":"text"}}
 ```
 
+## Sample Application
+
+The repository includes a sample Qt application with various widgets to experiment with Widgeteer. It demonstrates forms, controls, dialogs, and more — perfect for learning the API or testing your automation scripts.
+
+<table>
+<tr>
+<td><img src="sample_A.png" alt="Form tab with user input fields"/></td>
+<td><img src="sample_B.png" alt="Controls tab with slider and list"/></td>
+</tr>
+</table>
+
+```bash
+# Build and run the sample application
+cmake -B build && cmake --build build --parallel
+./build/sample/widgeteer_sample 9000
+```
+
+Then connect via WebSocket on port 9000 and start exploring.
+
 ## Building
 
 ```bash
