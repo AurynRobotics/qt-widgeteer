@@ -18,7 +18,7 @@ namespace widgeteer {
 /**
  * @brief Fluent C++ API for testing Qt applications.
  *
- * WidgeteerBot provides a high-level, test-framework-agnostic API for
+ * WidgeteerClient provides a high-level, test-framework-agnostic API for
  * automating Qt widget interactions. It wraps CommandExecutor with a
  * Result-based error handling approach that works with QTest, GTest,
  * Catch2, or any other test framework.
@@ -26,14 +26,14 @@ namespace widgeteer {
  * Example usage with QTest:
  * @code
  * void MyTest::testLogin() {
- *     widgeteer::WidgeteerBot bot;
+ *     widgeteer::WidgeteerClient client;
  *
- *     QVERIFY(bot.type("@name:username", "admin"));
- *     QVERIFY(bot.type("@name:password", "secret"));
- *     QVERIFY(bot.click("@name:loginButton"));
- *     QVERIFY(bot.waitFor("@name:dashboard", "visible"));
+ *     QVERIFY(client.type("@name:username", "admin"));
+ *     QVERIFY(client.type("@name:password", "secret"));
+ *     QVERIFY(client.click("@name:loginButton"));
+ *     QVERIFY(client.waitFor("@name:dashboard", "visible"));
  *
- *     auto welcome = bot.getText("@name:welcomeLabel");
+ *     auto welcome = client.getText("@name:welcomeLabel");
  *     QVERIFY(welcome);
  *     QCOMPARE(welcome.value(), QString("Welcome, admin!"));
  * }
@@ -48,24 +48,24 @@ namespace widgeteer {
  * - @c parent/ * /widget - Find with wildcard
  * - @c parent/items[1] - Find with index
  */
-class WIDGETEER_EXPORT WidgeteerBot : public QObject {
+class WIDGETEER_EXPORT WidgeteerClient : public QObject {
   Q_OBJECT
 
 public:
   /**
-   * @brief Construct a WidgeteerBot that owns its own CommandExecutor.
+   * @brief Construct a WidgeteerClient that owns its own CommandExecutor.
    * @param parent Optional parent QObject
    */
-  explicit WidgeteerBot(QObject* parent = nullptr);
+  explicit WidgeteerClient(QObject* parent = nullptr);
 
   /**
-   * @brief Construct a WidgeteerBot using an external CommandExecutor.
+   * @brief Construct a WidgeteerClient using an external CommandExecutor.
    * @param executor Pointer to existing CommandExecutor (not owned)
    * @param parent Optional parent QObject
    */
-  explicit WidgeteerBot(CommandExecutor* executor, QObject* parent = nullptr);
+  explicit WidgeteerClient(CommandExecutor* executor, QObject* parent = nullptr);
 
-  ~WidgeteerBot() override = default;
+  ~WidgeteerClient() override = default;
 
   // ==================== Action Commands ====================
 

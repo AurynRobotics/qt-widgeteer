@@ -1,4 +1,4 @@
-#include <widgeteer/WidgeteerBot.h>
+#include <widgeteer/WidgeteerClient.h>
 
 #include <QLabel>
 #include <QLineEdit>
@@ -10,7 +10,7 @@
 
 using namespace widgeteer;
 
-class TestWidgeteerBot : public QObject {
+class TestWidgeteerClient : public QObject {
   Q_OBJECT
 
 private slots:
@@ -101,64 +101,64 @@ private slots:
     QCOMPARE(result.error().code, QString("VOID_ERROR"));
   }
 
-  // ==================== Bot Constructor Tests ====================
+  // ==================== Client Constructor Tests ====================
 
-  void testBotConstructorOwned() {
-    WidgeteerBot bot;
-    QVERIFY(bot.executor() != nullptr);
+  void testClientConstructorOwned() {
+    WidgeteerClient client;
+    QVERIFY(client.executor() != nullptr);
   }
 
-  void testBotConstructorExternal() {
+  void testClientConstructorExternal() {
     CommandExecutor executor;
-    WidgeteerBot bot(&executor);
-    QCOMPARE(bot.executor(), &executor);
+    WidgeteerClient client(&executor);
+    QCOMPARE(client.executor(), &executor);
   }
 
   // ==================== Action Tests ====================
 
   void testClick() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
     bool clicked = false;
     connect(button_, &QPushButton::clicked, this, [&clicked]() { clicked = true; });
 
-    auto result = bot.click("@name:button");
+    auto result = client.click("@name:button");
     QVERIFY(result);
     QTest::qWait(50);
     QVERIFY(clicked);
   }
 
   void testClickNotFound() {
-    WidgeteerBot bot;
-    auto result = bot.click("@name:nonexistent");
+    WidgeteerClient client;
+    auto result = client.click("@name:nonexistent");
     QVERIFY(!result);
     QCOMPARE(result.error().code, QString("ELEMENT_NOT_FOUND"));
   }
 
   void testType() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
     input_->clear();
 
-    auto result = bot.type("@name:input", "Hello");
+    auto result = client.type("@name:input", "Hello");
     QVERIFY(result);
     QTest::qWait(50);
     QCOMPARE(input_->text(), QString("Hello"));
   }
 
   void testTypeClearFirst() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
     input_->setText("Old text");
 
-    auto result = bot.type("@name:input", "New text", true);
+    auto result = client.type("@name:input", "New text", true);
     QVERIFY(result);
     QTest::qWait(50);
     QCOMPARE(input_->text(), QString("New text"));
   }
 
   void testFocus() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.focus("@name:input");
+    auto result = client.focus("@name:input");
     QVERIFY(result);
     QTest::qWait(50);
     QVERIFY(input_->hasFocus());
@@ -167,33 +167,33 @@ private slots:
   // ==================== State Tests ====================
 
   void testSetValue() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.setValue("@name:spinBox", 77);
+    auto result = client.setValue("@name:spinBox", 77);
     QVERIFY(result);
     QCOMPARE(spinBox_->value(), 77);
   }
 
   void testSetProperty() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.setProperty("@name:label", "text", "New Label Text");
+    auto result = client.setProperty("@name:label", "text", "New Label Text");
     QVERIFY(result);
     QCOMPARE(label_->text(), QString("New Label Text"));
   }
 
   void testGetProperty() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
     label_->setText("Test Property");
 
-    auto result = bot.getProperty("@name:label", "text");
+    auto result = client.getProperty("@name:label", "text");
     QVERIFY(result);
     QCOMPARE(result.value().toString(), QString("Test Property"));
   }
 
   void testGetPropertyNotFound() {
-    WidgeteerBot bot;
-    auto result = bot.getProperty("@name:label", "nonexistentProperty");
+    WidgeteerClient client;
+    auto result = client.getProperty("@name:label", "nonexistentProperty");
     QVERIFY(!result);
     QCOMPARE(result.error().code, QString("PROPERTY_NOT_FOUND"));
   }
@@ -201,53 +201,53 @@ private slots:
   // ==================== Query Tests ====================
 
   void testExists() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto existsResult = bot.exists("@name:button");
+    auto existsResult = client.exists("@name:button");
     QVERIFY(existsResult);
     QVERIFY(existsResult.value());
 
-    auto notExistsResult = bot.exists("@name:nonexistent");
+    auto notExistsResult = client.exists("@name:nonexistent");
     QVERIFY(notExistsResult);
     QVERIFY(!notExistsResult.value());
   }
 
   void testIsVisible() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto visibleResult = bot.isVisible("@name:button");
+    auto visibleResult = client.isVisible("@name:button");
     QVERIFY(visibleResult);
     QVERIFY(visibleResult.value());
 
     button_->hide();
-    auto hiddenResult = bot.isVisible("@name:button");
+    auto hiddenResult = client.isVisible("@name:button");
     QVERIFY(hiddenResult);
     QVERIFY(!hiddenResult.value());
     button_->show();
   }
 
   void testGetText() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
     label_->setText("Sample Text");
 
-    auto result = bot.getText("@name:label");
+    auto result = client.getText("@name:label");
     QVERIFY(result);
     QCOMPARE(result.value(), QString("Sample Text"));
   }
 
   void testGetTextFromLineEdit() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
     input_->setText("Input Text");
 
-    auto result = bot.getText("@name:input");
+    auto result = client.getText("@name:input");
     QVERIFY(result);
     QCOMPARE(result.value(), QString("Input Text"));
   }
 
   void testListProperties() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.listProperties("@name:button");
+    auto result = client.listProperties("@name:button");
     QVERIFY(result);
     QVERIFY(result.value().size() > 0);
   }
@@ -255,41 +255,41 @@ private slots:
   // ==================== Introspection Tests ====================
 
   void testGetTree() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.getTree();
+    auto result = client.getTree();
     QVERIFY(result);
     QVERIFY(result.value().contains("children") || result.value().contains("objectName"));
   }
 
   void testGetTreeWithDepth() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.getTree(1);
+    auto result = client.getTree(1);
     QVERIFY(result);
   }
 
   void testFind() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.find("@class:QPushButton");
+    auto result = client.find("@class:QPushButton");
     QVERIFY(result);
     QVERIFY(result.value().contains("matches"));
     QVERIFY(result.value().value("count").toInt() >= 1);
   }
 
   void testDescribe() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.describe("@name:button");
+    auto result = client.describe("@name:button");
     QVERIFY(result);
     QVERIFY(result.value().contains("objectName") || result.value().contains("class"));
   }
 
   void testGetFormFields() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.getFormFields();
+    auto result = client.getFormFields();
     QVERIFY(result);
     QVERIFY(result.value().contains("fields"));
   }
@@ -297,26 +297,26 @@ private slots:
   // ==================== Sync Tests ====================
 
   void testWaitFor() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.waitFor("@name:button", "exists", 1000);
+    auto result = client.waitFor("@name:button", "exists", 1000);
     QVERIFY(result);
   }
 
   void testWaitForTimeout() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.waitFor("@name:nonexistent", "exists", 100);
+    auto result = client.waitFor("@name:nonexistent", "exists", 100);
     QVERIFY(!result);
     QCOMPARE(result.error().code, QString("TIMEOUT"));
   }
 
   void testSleep() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
     QElapsedTimer timer;
     timer.start();
-    auto result = bot.sleep(50);
+    auto result = client.sleep(50);
     QVERIFY(result);
     QVERIFY(timer.elapsed() >= 50);
   }
@@ -324,9 +324,9 @@ private slots:
   // ==================== Screenshot Tests ====================
 
   void testScreenshot() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.screenshot();
+    auto result = client.screenshot();
     QVERIFY(result);
     QVERIFY(result.value().contains("screenshot"));
     QVERIFY(result.value().contains("width"));
@@ -334,9 +334,9 @@ private slots:
   }
 
   void testScreenshotAnnotated() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.screenshotAnnotated();
+    auto result = client.screenshotAnnotated();
     QVERIFY(result);
     QVERIFY(result.value().contains("screenshot"));
     QVERIFY(result.value().contains("annotations"));
@@ -345,17 +345,17 @@ private slots:
   // ==================== Extensibility Tests ====================
 
   void testListObjects() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.listObjects();
+    auto result = client.listObjects();
     QVERIFY(result);
     QVERIFY(result.value().contains("objects"));
   }
 
   void testListCustomCommands() {
-    WidgeteerBot bot;
+    WidgeteerClient client;
 
-    auto result = bot.listCustomCommands();
+    auto result = client.listCustomCommands();
     QVERIFY(result);
     QVERIFY(result.value().contains("commands"));
   }
@@ -368,5 +368,5 @@ private:
   QSpinBox* spinBox_ = nullptr;
 };
 
-QTEST_MAIN(TestWidgeteerBot)
-#include "test_widgeteer_bot.moc"
+QTEST_MAIN(TestWidgeteerClient)
+#include "test_widgeteer_client.moc"

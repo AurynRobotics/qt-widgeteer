@@ -1,39 +1,39 @@
-#include <widgeteer/WidgeteerBot.h>
+#include <widgeteer/WidgeteerClient.h>
 
 #include <QUuid>
 
 namespace widgeteer {
 
-WidgeteerBot::WidgeteerBot(QObject* parent)
+WidgeteerClient::WidgeteerClient(QObject* parent)
   : QObject(parent), ownedExecutor_(std::make_unique<CommandExecutor>(this)) {
   executor_ = ownedExecutor_.get();
 }
 
-WidgeteerBot::WidgeteerBot(CommandExecutor* executor, QObject* parent)
+WidgeteerClient::WidgeteerClient(CommandExecutor* executor, QObject* parent)
   : QObject(parent), executor_(executor) {
 }
 
 // ==================== Action Commands ====================
 
-Result<void> WidgeteerBot::click(const QString& target) {
+Result<void> WidgeteerClient::click(const QString& target) {
   QJsonObject params;
   params["target"] = target;
   return execute("click", params);
 }
 
-Result<void> WidgeteerBot::doubleClick(const QString& target) {
+Result<void> WidgeteerClient::doubleClick(const QString& target) {
   QJsonObject params;
   params["target"] = target;
   return execute("double_click", params);
 }
 
-Result<void> WidgeteerBot::rightClick(const QString& target) {
+Result<void> WidgeteerClient::rightClick(const QString& target) {
   QJsonObject params;
   params["target"] = target;
   return execute("right_click", params);
 }
 
-Result<void> WidgeteerBot::type(const QString& target, const QString& text, bool clearFirst) {
+Result<void> WidgeteerClient::type(const QString& target, const QString& text, bool clearFirst) {
   QJsonObject params;
   params["target"] = target;
   params["text"] = text;
@@ -43,8 +43,8 @@ Result<void> WidgeteerBot::type(const QString& target, const QString& text, bool
   return execute("type", params);
 }
 
-Result<void> WidgeteerBot::key(const QString& target, const QString& key,
-                               const QStringList& modifiers) {
+Result<void> WidgeteerClient::key(const QString& target, const QString& key,
+                                  const QStringList& modifiers) {
   QJsonObject params;
   params["target"] = target;
   params["key"] = key;
@@ -58,21 +58,21 @@ Result<void> WidgeteerBot::key(const QString& target, const QString& key,
   return execute("key", params);
 }
 
-Result<void> WidgeteerBot::keySequence(const QString& target, const QString& sequence) {
+Result<void> WidgeteerClient::keySequence(const QString& target, const QString& sequence) {
   QJsonObject params;
   params["target"] = target;
   params["sequence"] = sequence;
   return execute("key_sequence", params);
 }
 
-Result<void> WidgeteerBot::drag(const QString& from, const QString& to) {
+Result<void> WidgeteerClient::drag(const QString& from, const QString& to) {
   QJsonObject params;
   params["from"] = from;
   params["to"] = to;
   return execute("drag", params);
 }
 
-Result<void> WidgeteerBot::scroll(const QString& target, int deltaX, int deltaY) {
+Result<void> WidgeteerClient::scroll(const QString& target, int deltaX, int deltaY) {
   QJsonObject params;
   params["target"] = target;
   params["delta_x"] = deltaX;
@@ -80,13 +80,13 @@ Result<void> WidgeteerBot::scroll(const QString& target, int deltaX, int deltaY)
   return execute("scroll", params);
 }
 
-Result<void> WidgeteerBot::hover(const QString& target) {
+Result<void> WidgeteerClient::hover(const QString& target) {
   QJsonObject params;
   params["target"] = target;
   return execute("hover", params);
 }
 
-Result<void> WidgeteerBot::focus(const QString& target) {
+Result<void> WidgeteerClient::focus(const QString& target) {
   QJsonObject params;
   params["target"] = target;
   return execute("focus", params);
@@ -94,15 +94,15 @@ Result<void> WidgeteerBot::focus(const QString& target) {
 
 // ==================== State Commands ====================
 
-Result<void> WidgeteerBot::setValue(const QString& target, const QJsonValue& value) {
+Result<void> WidgeteerClient::setValue(const QString& target, const QJsonValue& value) {
   QJsonObject params;
   params["target"] = target;
   params["value"] = value;
   return execute("set_value", params);
 }
 
-Result<void> WidgeteerBot::setProperty(const QString& target, const QString& property,
-                                       const QJsonValue& value) {
+Result<void> WidgeteerClient::setProperty(const QString& target, const QString& property,
+                                          const QJsonValue& value) {
   QJsonObject params;
   params["target"] = target;
   params["property"] = property;
@@ -110,7 +110,7 @@ Result<void> WidgeteerBot::setProperty(const QString& target, const QString& pro
   return execute("set_property", params);
 }
 
-Result<QJsonValue> WidgeteerBot::getProperty(const QString& target, const QString& property) {
+Result<QJsonValue> WidgeteerClient::getProperty(const QString& target, const QString& property) {
   QJsonObject params;
   params["target"] = target;
   params["property"] = property;
@@ -122,7 +122,7 @@ Result<QJsonValue> WidgeteerBot::getProperty(const QString& target, const QStrin
   return Result<QJsonValue>::ok(result.value().value("value"));
 }
 
-Result<void> WidgeteerBot::invoke(const QString& target, const QString& method) {
+Result<void> WidgeteerClient::invoke(const QString& target, const QString& method) {
   QJsonObject params;
   params["target"] = target;
   params["method"] = method;
@@ -131,7 +131,7 @@ Result<void> WidgeteerBot::invoke(const QString& target, const QString& method) 
 
 // ==================== Query Commands ====================
 
-Result<bool> WidgeteerBot::exists(const QString& target) {
+Result<bool> WidgeteerClient::exists(const QString& target) {
   QJsonObject params;
   params["target"] = target;
 
@@ -142,7 +142,7 @@ Result<bool> WidgeteerBot::exists(const QString& target) {
   return Result<bool>::ok(result.value().value("exists").toBool());
 }
 
-Result<bool> WidgeteerBot::isVisible(const QString& target) {
+Result<bool> WidgeteerClient::isVisible(const QString& target) {
   QJsonObject params;
   params["target"] = target;
 
@@ -153,7 +153,7 @@ Result<bool> WidgeteerBot::isVisible(const QString& target) {
   return Result<bool>::ok(result.value().value("visible").toBool());
 }
 
-Result<QString> WidgeteerBot::getText(const QString& target) {
+Result<QString> WidgeteerClient::getText(const QString& target) {
   // Use get_property to get "text" property
   QJsonObject params;
   params["target"] = target;
@@ -166,7 +166,7 @@ Result<QString> WidgeteerBot::getText(const QString& target) {
   return Result<QString>::ok(result.value().value("value").toString());
 }
 
-Result<QJsonArray> WidgeteerBot::listProperties(const QString& target) {
+Result<QJsonArray> WidgeteerClient::listProperties(const QString& target) {
   QJsonObject params;
   params["target"] = target;
 
@@ -179,7 +179,7 @@ Result<QJsonArray> WidgeteerBot::listProperties(const QString& target) {
 
 // ==================== Introspection Commands ====================
 
-Result<QJsonObject> WidgeteerBot::getTree(int depth, bool includeInvisible) {
+Result<QJsonObject> WidgeteerClient::getTree(int depth, bool includeInvisible) {
   QJsonObject params;
   if (depth >= 0) {
     params["depth"] = depth;
@@ -190,26 +190,26 @@ Result<QJsonObject> WidgeteerBot::getTree(int depth, bool includeInvisible) {
   return executeForResult("get_tree", params);
 }
 
-Result<QJsonObject> WidgeteerBot::find(const QString& query, int maxResults) {
+Result<QJsonObject> WidgeteerClient::find(const QString& query, int maxResults) {
   QJsonObject params;
   params["query"] = query;
   params["max_results"] = maxResults;
   return executeForResult("find", params);
 }
 
-Result<QJsonObject> WidgeteerBot::describe(const QString& target) {
+Result<QJsonObject> WidgeteerClient::describe(const QString& target) {
   QJsonObject params;
   params["target"] = target;
   return executeForResult("describe", params);
 }
 
-Result<QJsonObject> WidgeteerBot::getActions(const QString& target) {
+Result<QJsonObject> WidgeteerClient::getActions(const QString& target) {
   QJsonObject params;
   params["target"] = target;
   return executeForResult("get_actions", params);
 }
 
-Result<QJsonObject> WidgeteerBot::getFormFields(const QString& root) {
+Result<QJsonObject> WidgeteerClient::getFormFields(const QString& root) {
   QJsonObject params;
   if (!root.isEmpty()) {
     params["root"] = root;
@@ -219,7 +219,8 @@ Result<QJsonObject> WidgeteerBot::getFormFields(const QString& root) {
 
 // ==================== Synchronization Commands ====================
 
-Result<void> WidgeteerBot::waitFor(const QString& target, const QString& condition, int timeoutMs) {
+Result<void> WidgeteerClient::waitFor(const QString& target, const QString& condition,
+                                      int timeoutMs) {
   QJsonObject params;
   params["target"] = target;
   params["condition"] = condition;
@@ -227,13 +228,14 @@ Result<void> WidgeteerBot::waitFor(const QString& target, const QString& conditi
   return execute("wait", params);
 }
 
-Result<void> WidgeteerBot::waitIdle(int timeoutMs) {
+Result<void> WidgeteerClient::waitIdle(int timeoutMs) {
   QJsonObject params;
   params["timeout_ms"] = timeoutMs;
   return execute("wait_idle", params);
 }
 
-Result<void> WidgeteerBot::waitSignal(const QString& target, const QString& signal, int timeoutMs) {
+Result<void> WidgeteerClient::waitSignal(const QString& target, const QString& signal,
+                                         int timeoutMs) {
   QJsonObject params;
   params["target"] = target;
   params["signal"] = signal;
@@ -241,7 +243,7 @@ Result<void> WidgeteerBot::waitSignal(const QString& target, const QString& sign
   return execute("wait_signal", params);
 }
 
-Result<void> WidgeteerBot::sleep(int ms) {
+Result<void> WidgeteerClient::sleep(int ms) {
   QJsonObject params;
   params["ms"] = ms;
   return execute("sleep", params);
@@ -249,7 +251,7 @@ Result<void> WidgeteerBot::sleep(int ms) {
 
 // ==================== Screenshot Commands ====================
 
-Result<QJsonObject> WidgeteerBot::screenshot(const QString& target) {
+Result<QJsonObject> WidgeteerClient::screenshot(const QString& target) {
   QJsonObject params;
   if (!target.isEmpty()) {
     params["target"] = target;
@@ -257,7 +259,7 @@ Result<QJsonObject> WidgeteerBot::screenshot(const QString& target) {
   return executeForResult("screenshot", params);
 }
 
-Result<QJsonObject> WidgeteerBot::screenshotAnnotated(const QString& target) {
+Result<QJsonObject> WidgeteerClient::screenshotAnnotated(const QString& target) {
   QJsonObject params;
   if (!target.isEmpty()) {
     params["target"] = target;
@@ -268,8 +270,8 @@ Result<QJsonObject> WidgeteerBot::screenshotAnnotated(const QString& target) {
 
 // ==================== Extensibility Commands ====================
 
-Result<QJsonObject> WidgeteerBot::call(const QString& object, const QString& method,
-                                       const QJsonArray& args) {
+Result<QJsonObject> WidgeteerClient::call(const QString& object, const QString& method,
+                                          const QJsonArray& args) {
   QJsonObject params;
   params["object"] = object;
   params["method"] = method;
@@ -279,23 +281,23 @@ Result<QJsonObject> WidgeteerBot::call(const QString& object, const QString& met
   return executeForResult("call", params);
 }
 
-Result<QJsonObject> WidgeteerBot::listObjects() {
+Result<QJsonObject> WidgeteerClient::listObjects() {
   return executeForResult("list_objects", QJsonObject());
 }
 
-Result<QJsonObject> WidgeteerBot::listCustomCommands() {
+Result<QJsonObject> WidgeteerClient::listCustomCommands() {
   return executeForResult("list_custom_commands", QJsonObject());
 }
 
 // ==================== Control Commands ====================
 
-Result<void> WidgeteerBot::quit() {
+Result<void> WidgeteerClient::quit() {
   return execute("quit", QJsonObject());
 }
 
 // ==================== Private Helpers ====================
 
-Result<void> WidgeteerBot::execute(const QString& command, const QJsonObject& params) {
+Result<void> WidgeteerClient::execute(const QString& command, const QJsonObject& params) {
   Command cmd;
   cmd.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
   cmd.name = command;
@@ -309,8 +311,8 @@ Result<void> WidgeteerBot::execute(const QString& command, const QJsonObject& pa
   return Result<void>::fail(response.error);
 }
 
-Result<QJsonObject> WidgeteerBot::executeForResult(const QString& command,
-                                                   const QJsonObject& params) {
+Result<QJsonObject> WidgeteerClient::executeForResult(const QString& command,
+                                                      const QJsonObject& params) {
   Command cmd;
   cmd.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
   cmd.name = command;

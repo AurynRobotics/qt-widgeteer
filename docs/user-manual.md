@@ -9,11 +9,12 @@ A comprehensive guide to using Widgeteer for Qt6 UI testing and automation.
 3. [Element Selection](#element-selection)
 4. [Common Operations](#common-operations)
 5. [Testing Patterns](#testing-patterns)
-6. [Synchronization](#synchronization)
-7. [Transactions](#transactions)
-8. [Extensibility](#extensibility)
-9. [Debugging Tips](#debugging-tips)
-10. [Best Practices](#best-practices)
+6. [C++ Testing with WidgeteerClient](#c-testing-with-widgeteerbot)
+7. [Synchronization](#synchronization)
+8. [Transactions](#transactions)
+9. [Extensibility](#extensibility)
+10. [Debugging Tips](#debugging-tips)
+11. [Best Practices](#best-practices)
 
 ---
 
@@ -615,6 +616,192 @@ main_page = MainPage(client)
 login_page.login("testuser", "password123")
 assert main_page.is_logged_in()
 main_page.logout()
+```
+
+---
+
+## C++ Testing with WidgeteerClient
+
+For in-process C++ unit tests, Widgeteer provides `WidgeteerClient` — a fluent API that works with any test framework (QTest, GTest, Catch2).
+
+### Why WidgeteerClient?
+
+- **No WebSocket overhead** — Direct in-process execution
+- **Type-safe** — C++ compile-time checking
+- **Framework agnostic** — Works with QTest, GTest, Catch2, or any framework
+- **Clean error handling** — `Result<T>` template without exceptions
+
+### Basic Usage
+
+```cpp
+#include <widgeteer/WidgeteerClient.h>
+#include <QtTest>
+
+class MyWidgetTest : public QObject {
+    Q_OBJECT
+
+private slots:
+    void initTestCase() {
+        // Create your widgets here
+        window_ = new QWidget();
+        button_ = new QPushButton("Click Me", window_);
+        button_->setObjectName("myButton");
+        input_ = new QLineEdit(window_);
+        input_->setObjectName("myInput");
+        window_->show();
+        QTest::qWait(100);
+    }
+
+    void cleanupTestCase() {
+        delete window_;
+    }
+
+    void testClickAndType() {
+        widgeteer::WidgeteerClient client;
+
+        // Click a button
+        QVERIFY(client.click("@name:myButton"));
+
+        // Type text
+        QVERIFY(client.type("@name:myInput", "Hello World"));
+
+        // Verify the text
+        auto result = client.getText("@name:myInput");
+        QVERIFY(result);
+        QCOMPARE(result.value(), QString("Hello World"));
+    }
+
+private:
+    QWidget* window_ = nullptr;
+    QPushButton* button_ = nullptr;
+    QLineEdit* input_ = nullptr;
+};
+```
+
+### Result<T> Error Handling
+
+All WidgeteerClient methods return `Result<T>` which provides clean error handling:
+
+```cpp
+// Check success with operator bool()
+auto result = client.click("@name:button");
+if (result) {
+    qDebug() << "Click succeeded";
+} else {
+    qDebug() << "Error:" << result.error().code << result.error().message;
+}
+
+// Get value from successful result
+auto textResult = client.getText("@name:label");
+if (textResult) {
+    QString text = textResult.value();
+}
+
+// Use valueOr() for defaults
+QString text = client.getText("@name:label").valueOr("default");
+```
+
+### Available Methods
+
+**Actions:**
+```cpp
+client.click("@name:button");
+client.doubleClick("@name:item");
+client.rightClick("@name:widget");
+client.type("@name:input", "text", clearFirst);
+client.key("@name:widget", "Enter", {"ctrl"});
+client.keySequence("@name:widget", "Ctrl+S");
+client.drag("@name:source", "@name:target");
+client.scroll("@name:scrollArea", 0, -120);
+client.hover("@name:widget");
+client.focus("@name:input");
+```
+
+**State:**
+```cpp
+client.setValue("@name:spinBox", 42);
+client.setProperty("@name:label", "text", "New Text");
+auto value = client.getProperty("@name:widget", "enabled");
+client.invoke("@name:widget", "clear");
+```
+
+**Queries:**
+```cpp
+auto exists = client.exists("@name:widget");        // Result<bool>
+auto visible = client.isVisible("@name:widget");    // Result<bool>
+auto text = client.getText("@name:label");          // Result<QString>
+auto props = client.listProperties("@name:widget"); // Result<QJsonArray>
+```
+
+**Introspection:**
+```cpp
+auto tree = client.getTree(depth, includeInvisible);
+auto matches = client.find("@class:QPushButton", maxResults);
+auto desc = client.describe("@name:widget");
+auto actions = client.getActions("@name:widget");
+auto fields = client.getFormFields("@name:form");
+```
+
+**Synchronization:**
+```cpp
+client.waitFor("@name:dialog", "visible", 5000);
+client.waitFor("@name:spinner", "!visible", 10000);
+client.waitIdle(5000);
+client.waitSignal("@name:loader", "finished()", 10000);
+client.sleep(100);
+```
+
+**Screenshots:**
+```cpp
+auto shot = client.screenshot();                    // Full window
+auto shot = client.screenshot("@name:chart");       // Specific widget
+auto annotated = client.screenshotAnnotated();      // With labels
+```
+
+### Using External CommandExecutor
+
+If you need to share a CommandExecutor between tests:
+
+```cpp
+widgeteer::CommandExecutor executor;
+widgeteer::WidgeteerClient client(&executor);  // Non-owning pointer
+
+// bot uses external executor
+```
+
+### Integration with GTest
+
+```cpp
+#include <widgeteer/WidgeteerClient.h>
+#include <gtest/gtest.h>
+
+class WidgetTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        window_ = new QWidget();
+        // ... setup widgets
+        window_->show();
+        QTest::qWait(100);
+    }
+
+    void TearDown() override {
+        delete window_;
+    }
+
+    widgeteer::WidgeteerClient client_;
+    QWidget* window_ = nullptr;
+};
+
+TEST_F(WidgetTest, ClickButton) {
+    EXPECT_TRUE(client_.click("@name:button"));
+}
+
+TEST_F(WidgetTest, TypeText) {
+    EXPECT_TRUE(client_.type("@name:input", "Hello"));
+    auto result = client_.getText("@name:input");
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result.value(), QString("Hello"));
+}
 ```
 
 ---

@@ -51,6 +51,11 @@ For detailed architecture with modification patterns, see [docs/architecture.md]
 - `Synchronizer.cpp` - Wait conditions (exists, visible, enabled, property, idle)
 - `ActionRecorder.cpp` - Record interactions for playback
 - `EventBroadcaster.cpp` - Event subscription system
+- `WidgeteerClient.cpp` - Fluent C++ API for in-process testing (QTest, GTest, Catch2)
+
+**Public Headers (include/widgeteer/):**
+- `Result.h` - Result<T, E> template for error handling without exceptions
+- `WidgeteerClient.h` - Fluent test API wrapping CommandExecutor
 
 **Element Selectors:**
 ```
@@ -103,6 +108,7 @@ All three steps must pass before committing changes.
 - test_element_finder.cpp - Widget lookup
 - test_action_recorder.cpp - Recording functionality
 - test_event_broadcaster.cpp - Event system
+- test_widgeteer_bot.cpp - WidgeteerClient fluent API and Result template
 
 **Python Integration Tests (tests/):**
 - widgeteer_client.py - Async/sync Python client

@@ -66,7 +66,7 @@ set(WIDGETEER_SOURCES
   src/ActionRecorder.cpp
   src/EventBroadcaster.cpp
   src/Server.cpp
-  src/WidgeteerBot.cpp
+  src/WidgeteerClient.cpp
 )
 
 set(WIDGETEER_HEADERS
@@ -81,7 +81,7 @@ set(WIDGETEER_HEADERS
   include/widgeteer/ActionRecorder.h
   include/widgeteer/EventBroadcaster.h
   include/widgeteer/Server.h
-  include/widgeteer/WidgeteerBot.h
+  include/widgeteer/WidgeteerClient.h
 )
 
 # Create the library

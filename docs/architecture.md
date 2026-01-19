@@ -13,12 +13,17 @@ Server                      # WebSocket server, entry point
 │   └── Synchronizer        # Wait conditions
 ├── ActionRecorder          # Record commands for playback
 └── EventBroadcaster        # Pub/sub event system
+
+WidgeteerClient             # Fluent C++ API for in-process testing
+└── CommandExecutor         # Owned or external executor
 ```
 
 ## File Layout
 
 ```
 include/widgeteer/          # Public headers (API surface)
+  ├── Result.h              # Result<T, E> template for error handling
+  └── WidgeteerClient.h     # Fluent C++ testing API
 src/                        # Implementation
 tests/cpp/                  # Qt Test unit tests
 tests/                      # Python integration tests
@@ -504,8 +509,9 @@ xvfb-run -a python3 tests/test_executor.py tests/sample_tests.json
 ### "Add a new command"
 1. `CommandExecutor.h` - Declare `cmdMyCommand()`
 2. `CommandExecutor.cpp` - Implement handler, register in constructor
-3. `tests/cpp/test_command_executor.cpp` - Add test
-4. `docs/protocol.md` - Document the command
+3. `WidgeteerClient.h/cpp` - Add wrapper method (optional, for C++ API)
+4. `tests/cpp/test_command_executor.cpp` - Add test
+5. `docs/protocol.md` - Document the command
 
 ### "Support a new widget type in set_value"
 1. `CommandExecutor::cmdSetValue()` - Add `qobject_cast` branch
@@ -557,3 +563,64 @@ ctest --test-dir build       # Test
 - Namespace: `widgeteer::`
 - clang-format (Google style, 100 char lines)
 - `-Werror` (warnings as errors)
+
+---
+
+## WidgeteerClient (C++ Testing API)
+
+### Purpose
+
+`WidgeteerClient` provides a fluent C++ API for in-process widget testing. Unlike the WebSocket-based Server, it runs in the same process as the application, making it ideal for unit tests.
+
+### Architecture
+
+```
+WidgeteerClient
+├── owns CommandExecutor (if default constructor)
+└── OR uses external CommandExecutor (if passed in)
+```
+
+### Result<T, E> Template
+
+All methods return `Result<T, E>` for clean error handling:
+
+```cpp
+Result<void> click(const QString& target);      // Actions return Result<void>
+Result<QString> getText(const QString& target); // Queries return Result<T>
+Result<QJsonObject> getTree();                  // Introspection returns JSON
+```
+
+Usage pattern:
+```cpp
+auto result = client.click("@name:button");
+if (result) {
+    // success
+} else {
+    qDebug() << result.error().code << result.error().message;
+}
+```
+
+### Adding New Methods
+
+1. Add declaration in `WidgeteerClient.h`
+2. Implement in `WidgeteerClient.cpp` using the pattern:
+
+```cpp
+Result<void> WidgeteerClient::myMethod(const QString& target) {
+    QJsonObject params;
+    params["target"] = target;
+    return execute("command_name", params);  // For void results
+}
+
+Result<QString> WidgeteerClient::myQuery(const QString& target) {
+    QJsonObject params;
+    params["target"] = target;
+    auto result = executeForResult("command_name", params);
+    if (!result) {
+        return Result<QString>::fail(result.error());
+    }
+    return Result<QString>::ok(result.value()["key"].toString());
+}
+```
+
+3. Add test in `tests/cpp/test_widgeteer_client.cpp`

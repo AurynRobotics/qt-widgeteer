@@ -80,6 +80,12 @@ int main(int argc, char* argv[]) {
 }
 ```
 
+For secure connections, you can restrict access to localhost or require an API key:
+```cpp
+server.setAllowedHosts({"localhost", "127.0.0.1"});
+server.setApiKey("your-secret-key");  // Clients connect with ?token=your-secret-key
+```
+
 Then connect and interact:
 
 ```python
@@ -103,6 +109,30 @@ wscat -c ws://localhost:9000
 > {"type":"command","id":"4","command":"wait","params":{"target":"@name:statusLabel","condition":"visible"}}
 > {"type":"command","id":"5","command":"get_property","params":{"target":"@name:statusLabel","property":"text"}}
 ```
+
+## C++ Testing API
+
+For in-process C++ unit tests, use `WidgeteerClient` — a fluent API that works with any test framework (QTest, GTest, Catch2):
+
+```cpp
+#include <widgeteer/WidgeteerClient.h>
+#include <QtTest>
+
+void MyTest::testLogin() {
+    widgeteer::WidgeteerClient client;
+
+    QVERIFY(client.type("@name:username", "admin"));
+    QVERIFY(client.type("@name:password", "secret"));
+    QVERIFY(client.click("@name:loginButton"));
+    QVERIFY(client.waitFor("@name:dashboard", "visible"));
+
+    auto welcome = client.getText("@name:welcomeLabel");
+    QVERIFY(welcome);
+    QCOMPARE(welcome.value(), QString("Welcome, admin!"));
+}
+```
+
+The `Result<T>` return type provides clean error handling without exceptions — use `operator bool()` for quick checks or `.error()` for details.
 
 ## Sample Application
 
