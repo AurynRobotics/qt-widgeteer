@@ -29,7 +29,15 @@ elseif(MSVC)
 endif()
 
 # Debug build options: Sanitizers and Code Coverage
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+# Only enable when building standalone (not as a subdirectory)
+option(WIDGETEER_ENABLE_SANITIZERS "Enable sanitizers and coverage in Debug builds" OFF)
+
+# Auto-enable sanitizers only when building standalone
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  set(WIDGETEER_ENABLE_SANITIZERS ON)
+endif()
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND WIDGETEER_ENABLE_SANITIZERS)
   message(STATUS "Debug build: Enabling sanitizers and code coverage")
 
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -45,6 +53,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-fsanitize=undefined)
     add_link_options(-fsanitize=undefined)
   endif()
+elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  message(STATUS "Debug build: Sanitizers disabled (subdirectory mode)")
 endif()
 
 # Find Qt6
