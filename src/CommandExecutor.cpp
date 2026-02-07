@@ -9,6 +9,10 @@
 #include <QComboBox>
 #include <QDateEdit>
 #include <QDateTimeEdit>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QPointer>
+#include <QTest>
 #include <QDial>
 #include <QDoubleSpinBox>
 #include <QElapsedTimer>
@@ -53,6 +57,13 @@ void CommandExecutor::initializeCommandRegistry() {
   registerCommand("list_properties", [this](const QJsonObject& p) { return cmdListProperties(p); });
   registerCommand("get_actions", [this](const QJsonObject& p) { return cmdGetActions(p); });
   registerCommand("get_form_fields", [this](const QJsonObject& p) { return cmdGetFormFields(p); });
+  registerCommand("list_windows", [this](const QJsonObject& p) { return cmdListWindows(p); });
+
+  // Dialog commands
+  registerCommand("accept_dialog", [this](const QJsonObject& p) { return cmdAcceptDialog(p); });
+  registerCommand("reject_dialog", [this](const QJsonObject& p) { return cmdRejectDialog(p); });
+  registerCommand("close_window", [this](const QJsonObject& p) { return cmdCloseWindow(p); });
+  registerCommand("is_dialog_open", [this](const QJsonObject& p) { return cmdIsDialogOpen(p); });
 
   // Action commands
   registerCommand("click", [this](const QJsonObject& p) { return cmdClick(p); });
@@ -227,6 +238,28 @@ QJsonObject CommandExecutor::cmdGetTree(const QJsonObject& params) {
   opts.includeInvisible = params.value("include_invisible").toBool(false);
   opts.includeGeometry = params.value("include_geometry").toBool(true);
   opts.includeProperties = params.value("include_properties").toBool(false);
+
+  bool allWindows = params.value("all_windows").toBool(false);
+
+  // If all_windows is requested, return an array of all visible top-level window trees
+  if (allWindows) {
+    QJsonArray windowTrees;
+    for (QWidget* widget : QApplication::topLevelWidgets()) {
+      if (!opts.includeInvisible && !widget->isVisible()) {
+        continue;
+      }
+
+      QJsonObject windowInfo;
+      windowInfo["objectName"] = widget->objectName();
+      windowInfo["windowTitle"] = widget->windowTitle();
+      windowInfo["className"] = QString::fromLatin1(widget->metaObject()->className());
+      windowInfo["isModal"] = widget->isModal();
+      windowInfo["isActiveWindow"] = widget->isActiveWindow();
+      windowInfo["tree"] = introspector_.getTree(widget, opts);
+      windowTrees.append(windowInfo);
+    }
+    return QJsonObject{ { "windows", windowTrees }, { "count", windowTrees.size() } };
+  }
 
   QWidget* root = nullptr;
   if (params.contains("root")) {
@@ -627,6 +660,129 @@ QJsonObject CommandExecutor::cmdGetFormFields(const QJsonObject& params) {
   return QJsonObject{ { "fields", fields }, { "count", fields.size() } };
 }
 
+QJsonObject CommandExecutor::cmdListWindows(const QJsonObject& params) {
+  Q_UNUSED(params);
+
+  QJsonArray windows;
+  for (QWidget* widget : QApplication::topLevelWidgets()) {
+    if (!widget->isVisible()) {
+      continue;
+    }
+
+    QJsonObject info;
+    info["objectName"] = widget->objectName();
+    info["windowTitle"] = widget->windowTitle();
+    info["className"] = QString::fromLatin1(widget->metaObject()->className());
+    info["isModal"] = widget->isModal();
+    info["isActiveWindow"] = widget->isActiveWindow();
+
+    QJsonObject geometry;
+    QRect geom = widget->geometry();
+    geometry["x"] = geom.x();
+    geometry["y"] = geom.y();
+    geometry["width"] = geom.width();
+    geometry["height"] = geom.height();
+    info["geometry"] = geometry;
+
+    windows.append(info);
+  }
+
+  return QJsonObject{ { "windows", windows }, { "count", windows.size() } };
+}
+
+// Dialog commands
+QJsonObject CommandExecutor::cmdAcceptDialog(const QJsonObject& params) {
+  Q_UNUSED(params);
+
+  QWidget* activeWindow = QApplication::activeWindow();
+  if (auto* dialog = qobject_cast<QDialog*>(activeWindow)) {
+    // Use invokeMethod with QueuedConnection to avoid blocking
+    QMetaObject::invokeMethod(dialog, "accept", Qt::QueuedConnection);
+    return QJsonObject{ { "accepted", true },
+                        { "dialog_title", dialog->windowTitle() },
+                        { "dialog_class",
+                          QString::fromLatin1(dialog->metaObject()->className()) } };
+  }
+
+  QJsonObject error;
+  error["code"] = ErrorCode::ElementNotFound;
+  error["message"] = "No active dialog to accept";
+  return QJsonObject{ { "error", error } };
+}
+
+QJsonObject CommandExecutor::cmdRejectDialog(const QJsonObject& params) {
+  Q_UNUSED(params);
+
+  QWidget* activeWindow = QApplication::activeWindow();
+  if (auto* dialog = qobject_cast<QDialog*>(activeWindow)) {
+    // Use invokeMethod with QueuedConnection to avoid blocking
+    QMetaObject::invokeMethod(dialog, "reject", Qt::QueuedConnection);
+    return QJsonObject{ { "rejected", true },
+                        { "dialog_title", dialog->windowTitle() },
+                        { "dialog_class",
+                          QString::fromLatin1(dialog->metaObject()->className()) } };
+  }
+
+  QJsonObject error;
+  error["code"] = ErrorCode::ElementNotFound;
+  error["message"] = "No active dialog to reject";
+  return QJsonObject{ { "error", error } };
+}
+
+QJsonObject CommandExecutor::cmdCloseWindow(const QJsonObject& params) {
+  QWidget* window = nullptr;
+
+  if (params.contains("target")) {
+    QString errorOut;
+    window = resolveTarget(params, errorOut);
+    if (!window) {
+      QJsonObject error;
+      error["code"] = ErrorCode::ElementNotFound;
+      error["message"] = errorOut;
+      return QJsonObject{ { "error", error } };
+    }
+    // Find the top-level window containing this widget
+    window = window->window();
+  } else {
+    window = QApplication::activeWindow();
+  }
+
+  if (!window) {
+    QJsonObject error;
+    error["code"] = ErrorCode::ElementNotFound;
+    error["message"] = "No window to close";
+    return QJsonObject{ { "error", error } };
+  }
+
+  QString title = window->windowTitle();
+  QString className = QString::fromLatin1(window->metaObject()->className());
+
+  // Use invokeMethod with QueuedConnection to avoid blocking
+  QMetaObject::invokeMethod(window, "close", Qt::QueuedConnection);
+
+  return QJsonObject{
+    { "closed", true }, { "window_title", title }, { "window_class", className }
+  };
+}
+
+QJsonObject CommandExecutor::cmdIsDialogOpen(const QJsonObject& params) {
+  Q_UNUSED(params);
+
+  QWidget* activeWindow = QApplication::activeWindow();
+  bool isDialog = activeWindow && activeWindow->isModal();
+
+  QJsonObject result;
+  result["is_open"] = isDialog;
+
+  if (isDialog) {
+    result["window_title"] = activeWindow->windowTitle();
+    result["class_name"] = QString::fromLatin1(activeWindow->metaObject()->className());
+    result["is_modal"] = activeWindow->isModal();
+  }
+
+  return result;
+}
+
 // Action commands
 QJsonObject CommandExecutor::cmdClick(const QJsonObject& params) {
   QString errorOut;
@@ -782,6 +938,8 @@ QJsonObject CommandExecutor::cmdKey(const QJsonObject& params) {
     return QJsonObject{ { "error", error } };
   }
 
+  bool blocking = params.value("blocking").toBool(true);
+
   // Convert key string to Qt::Key (simplified)
   Qt::Key key = Qt::Key_unknown;
   if (keyStr.length() == 1) {
@@ -813,6 +971,19 @@ QJsonObject CommandExecutor::cmdKey(const QJsonObject& params) {
     } else if (modStr == "meta") {
       mods |= Qt::MetaModifier;
     }
+  }
+
+  if (!blocking) {
+    // Non-blocking mode: schedule key event via timer and return immediately.
+    // This is useful when the key event might close a dialog, which would
+    // otherwise block the response from being sent.
+    QPointer<QWidget> safeWidget = widget;
+    QTimer::singleShot(10, [safeWidget, key, mods]() {
+      if (safeWidget) {
+        QTest::keyClick(safeWidget, key, mods);
+      }
+    });
+    return QJsonObject{ { "key_pressed", true }, { "async", true } };
   }
 
   auto result = injector_.keyClick(widget, key, mods);
@@ -1283,6 +1454,8 @@ QJsonObject CommandExecutor::cmdSetValue(const QJsonObject& params) {
 // Verification commands
 QJsonObject CommandExecutor::cmdScreenshot(const QJsonObject& params) {
   QWidget* target = nullptr;
+  bool captureActiveWindow = params.value("active_window").toBool(false);
+
   if (params.contains("target")) {
     QString errorOut;
     target = resolveTarget(params, errorOut);
@@ -1294,7 +1467,13 @@ QJsonObject CommandExecutor::cmdScreenshot(const QJsonObject& params) {
     }
   }
 
-  // If no target, use first visible top-level widget
+  // If active_window is requested or no target specified, try to use the active window
+  // This is particularly useful for capturing modal dialogs
+  if (!target && captureActiveWindow) {
+    target = QApplication::activeWindow();
+  }
+
+  // If still no target, fall back to first visible top-level widget
   if (!target) {
     QWidgetList topLevelWidgets = QApplication::topLevelWidgets();
     for (QWidget* w : topLevelWidgets) {

@@ -49,6 +49,13 @@ private:
   QJsonObject cmdListProperties(const QJsonObject& params);
   QJsonObject cmdGetActions(const QJsonObject& params);
   QJsonObject cmdGetFormFields(const QJsonObject& params);
+  QJsonObject cmdListWindows(const QJsonObject& params);
+
+  // Command handlers - Dialog
+  QJsonObject cmdAcceptDialog(const QJsonObject& params);
+  QJsonObject cmdRejectDialog(const QJsonObject& params);
+  QJsonObject cmdCloseWindow(const QJsonObject& params);
+  QJsonObject cmdIsDialogOpen(const QJsonObject& params);
 
   // Command handlers - Actions
   QJsonObject cmdClick(const QJsonObject& params);

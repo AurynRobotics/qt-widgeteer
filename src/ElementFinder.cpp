@@ -3,6 +3,9 @@
 #include <QAbstractButton>
 #include <QAccessible>
 #include <QApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QPushButton>
 #include <QGroupBox>
 #include <QLabel>
 #include <QRegularExpression>
@@ -304,6 +307,77 @@ QWidget* ElementFinder::byAccessible(const QString& name, QWidget* root) {
   return nullptr;
 }
 
+QWidget* ElementFinder::byDialogRole(const QString& role) {
+  // Get the active window (which might be a dialog)
+  QWidget* activeWindow = QApplication::activeWindow();
+  if (!activeWindow) {
+    return nullptr;
+  }
+
+  // Map role names to QDialogButtonBox standard buttons
+  QDialogButtonBox::StandardButton standardButton = QDialogButtonBox::NoButton;
+  if (role == "accept" || role == "ok") {
+    standardButton = QDialogButtonBox::Ok;
+  } else if (role == "reject" || role == "cancel") {
+    standardButton = QDialogButtonBox::Cancel;
+  } else if (role == "apply") {
+    standardButton = QDialogButtonBox::Apply;
+  } else if (role == "help") {
+    standardButton = QDialogButtonBox::Help;
+  } else if (role == "yes") {
+    standardButton = QDialogButtonBox::Yes;
+  } else if (role == "no") {
+    standardButton = QDialogButtonBox::No;
+  } else if (role == "save") {
+    standardButton = QDialogButtonBox::Save;
+  } else if (role == "discard") {
+    standardButton = QDialogButtonBox::Discard;
+  } else if (role == "close") {
+    standardButton = QDialogButtonBox::Close;
+  } else if (role == "reset") {
+    standardButton = QDialogButtonBox::Reset;
+  }
+
+  // Find QDialogButtonBox in the active window
+  QDialogButtonBox* buttonBox = activeWindow->findChild<QDialogButtonBox*>();
+  if (buttonBox && standardButton != QDialogButtonBox::NoButton) {
+    QPushButton* button = buttonBox->button(standardButton);
+    if (button) {
+      return button;
+    }
+  }
+
+  // If no standard button found, try to find by role in button box
+  if (buttonBox) {
+    // Try to match by button role
+    QDialogButtonBox::ButtonRole targetRole = QDialogButtonBox::InvalidRole;
+    if (role == "accept" || role == "ok" || role == "yes" || role == "save") {
+      targetRole = QDialogButtonBox::AcceptRole;
+    } else if (role == "reject" || role == "cancel" || role == "no" || role == "close") {
+      targetRole = QDialogButtonBox::RejectRole;
+    } else if (role == "apply") {
+      targetRole = QDialogButtonBox::ApplyRole;
+    } else if (role == "help") {
+      targetRole = QDialogButtonBox::HelpRole;
+    } else if (role == "reset") {
+      targetRole = QDialogButtonBox::ResetRole;
+    } else if (role == "discard") {
+      targetRole = QDialogButtonBox::DestructiveRole;
+    }
+
+    if (targetRole != QDialogButtonBox::InvalidRole) {
+      QList<QAbstractButton*> buttons = buttonBox->buttons();
+      for (QAbstractButton* btn : buttons) {
+        if (buttonBox->buttonRole(btn) == targetRole) {
+          return btn;
+        }
+      }
+    }
+  }
+
+  return nullptr;
+}
+
 QWidget* ElementFinder::resolveSelector(const QString& selector, QString& errorOut) {
   if (selector.isEmpty()) {
     errorOut = "Empty selector";
@@ -342,6 +416,14 @@ QWidget* ElementFinder::resolveSelector(const QString& selector, QString& errorO
     result = byAccessible(name);
     if (!result) {
       errorOut = QStringLiteral("No widget with accessible name '%1'").arg(name);
+    }
+  }
+  // Semantic role selectors: @accept, @reject, @apply, @help, @yes, @no, @save, @discard, @close, @reset
+  else if (selector.startsWith("@")) {
+    QString role = selector.mid(1).toLower();
+    result = byDialogRole(role);
+    if (!result) {
+      errorOut = QStringLiteral("No dialog button with role '%1' found in active window").arg(role);
     }
   }
   // Path-based: parent/child/grandchild

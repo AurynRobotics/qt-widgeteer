@@ -102,6 +102,23 @@ The Python client supports both CSS-like syntax (simpler) and native syntax:
 | `[text="OK"]` | `@text:OK` | Button/label text |
 | `[accessible="Save"]` | `@accessible:Save` | Accessible name |
 
+**Semantic Role Selectors** (for dialog buttons):
+| Selector | Finds |
+|----------|-------|
+| `@accept`, `@ok` | OK button in QDialogButtonBox |
+| `@reject`, `@cancel` | Cancel button in QDialogButtonBox |
+| `@apply` | Apply button |
+| `@help` | Help button |
+| `@yes`, `@no` | Yes/No buttons |
+| `@save`, `@discard` | Save/Discard buttons |
+| `@close`, `@reset` | Close/Reset buttons |
+
+These selectors find standard buttons in the active window's QDialogButtonBox:
+```python
+client.click("@accept")     # Click OK button in current dialog
+client.click("@cancel")     # Click Cancel button
+```
+
 **Hierarchical paths** (both syntaxes work):
 ```python
 "mainWindow/toolbar/saveBtn"      # Plain path
@@ -152,9 +169,16 @@ Response includes for each field:
 {"type":"command","command":"double_click","params":{"target":"@name:item"}}
 {"type":"command","command":"type","params":{"target":"@name:input","text":"hello","clear_first":true}}
 {"type":"command","command":"key","params":{"target":"@name:input","key":"Enter"}}
+{"type":"command","command":"key","params":{"target":"@name:dialog","key":"Escape","blocking":false}}
 {"type":"command","command":"key_sequence","params":{"target":"@name:input","sequence":"Ctrl+S"}}
 {"type":"command","command":"scroll","params":{"target":"@name:list","delta_y":-100}}
 {"type":"command","command":"focus","params":{"target":"@name:input"}}
+```
+
+**Non-blocking key events**: Use `blocking: false` when sending key events that might close a dialog. This sends the key asynchronously and returns immediately, preventing timeouts:
+```python
+# Close dialog without waiting (avoids timeout when dialog closes)
+client.key("@name:dialog", "Escape", blocking=False)
 ```
 
 ### State Modification
@@ -209,6 +233,62 @@ Parameters: `target` (optional selector), `format` ("png"/"jpg"), `annotate` (bo
   - Widget-specific: `text`, `value`, `currentText`
 
 Useful for visual UI understanding before automation.
+
+### Window and Dialog Commands
+
+When working with applications that have modal dialogs, use these commands to inspect and interact with them:
+
+```json
+{"type":"command","command":"list_windows","params":{}}
+{"type":"command","command":"is_dialog_open","params":{}}
+{"type":"command","command":"accept_dialog","params":{}}
+{"type":"command","command":"reject_dialog","params":{}}
+{"type":"command","command":"close_window","params":{"target":"@name:optionalWidget"}}
+```
+
+**list_windows** - Returns all visible top-level windows including modal dialogs:
+- `windows` array with: `objectName`, `windowTitle`, `className`, `isModal`, `isActiveWindow`, `geometry`
+- `count` - number of windows
+
+**is_dialog_open** - Check if a modal dialog is the active window:
+- `is_open` - boolean
+- `window_title`, `class_name` if open
+
+**accept_dialog** / **reject_dialog** - Close modal dialog via QDialog::accept() / reject():
+- Equivalent to clicking OK/Cancel buttons
+- Uses Qt::QueuedConnection to avoid blocking
+
+**close_window** - Close any top-level window:
+- With `target`: closes the window containing that widget
+- Without `target`: closes the active window
+
+**Enhanced get_tree with all_windows**:
+```json
+{"type":"command","command":"get_tree","params":{"all_windows":true}}
+```
+Returns trees for all visible top-level windows, useful when dialogs are open.
+
+**Enhanced screenshot with active_window**:
+```json
+{"type":"command","command":"screenshot","params":{"active_window":true}}
+```
+Captures the active window, which includes modal dialogs that `screenshot()` might miss.
+
+**Python usage:**
+```python
+# Check if dialog is open
+if client.is_dialog_open().data.get("is_open"):
+    # Capture dialog screenshot
+    client.screenshot(active_window=True)
+    # Accept or reject the dialog
+    client.accept_dialog()  # or client.reject_dialog()
+
+# List all windows including dialogs
+windows = client.list_windows()
+for win in windows.data["windows"]:
+    if win["isModal"]:
+        print(f"Modal: {win['windowTitle']}")
+```
 
 ### Assertions
 ```json

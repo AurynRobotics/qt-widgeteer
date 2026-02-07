@@ -56,6 +56,10 @@ private:
   // By accessible name: "@accessible:Load Data Button"
   QWidget* byAccessible(const QString& name, QWidget* root = nullptr);
 
+  // By dialog role: "@accept", "@reject", "@apply", "@help", etc.
+  // Finds standard buttons in QDialogButtonBox of the active window
+  QWidget* byDialogRole(const QString& role);
+
   // Parse selector and dispatch to appropriate method
   QWidget* resolveSelector(const QString& selector, QString& errorOut);
 
