@@ -1635,8 +1635,8 @@ QJsonObject CommandExecutor::cmdScreenshot(const QJsonObject& params) {
       // Add widget-specific info
       if (auto* btn = qobject_cast<QAbstractButton*>(child)) {
         annotation["text"] = btn->text();
-      } else if (auto* label = qobject_cast<QLabel*>(child)) {
-        annotation["text"] = label->text();
+      } else if (auto* labelWidget = qobject_cast<QLabel*>(child)) {
+        annotation["text"] = labelWidget->text();
       } else if (auto* lineEdit = qobject_cast<QLineEdit*>(child)) {
         annotation["value"] = lineEdit->text();
         annotation["placeholder"] = lineEdit->placeholderText();
@@ -2126,11 +2126,11 @@ QJsonObject CommandExecutor::invokeMethod(QObject* object, const QString& method
     }
 
     // Get method index relative to this class
-    int methodIndex = matchedMethod.methodIndex();
+    int currentMethodIndex = matchedMethod.methodIndex();
 
     // Invoke using metacall
     int result =
-        QMetaObject::metacall(object, QMetaObject::InvokeMetaMethod, methodIndex, callArgs);
+        QMetaObject::metacall(object, QMetaObject::InvokeMetaMethod, currentMethodIndex, callArgs);
 
     success = (result < 0);  // metacall returns -1 on success, >= 0 on failure
 
