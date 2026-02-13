@@ -1,6 +1,10 @@
 #include <widgeteer/Server.h>
 
+#include <widgeteer/ElementFinder.h>
+
 #include <QApplication>
+#include <QChildEvent>
+#include <QEvent>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSet>
@@ -10,6 +14,36 @@
 #include <QUuid>
 
 namespace widgeteer {
+namespace {
+
+QJsonValue variantToJsonValue(const QVariant& value) {
+  switch (value.typeId()) {
+    case QMetaType::Bool:
+      return value.toBool();
+    case QMetaType::Int:
+    case QMetaType::LongLong:
+      return value.toInt();
+    case QMetaType::UInt:
+    case QMetaType::ULongLong:
+      return static_cast<qint64>(value.toLongLong());
+    case QMetaType::Float:
+    case QMetaType::Double:
+      return value.toDouble();
+    case QMetaType::QString:
+      return value.toString();
+    case QMetaType::QStringList: {
+      QJsonArray arr;
+      for (const QString& s : value.toStringList()) {
+        arr.append(s);
+      }
+      return arr;
+    }
+    default:
+      return QJsonValue::fromVariant(value);
+  }
+}
+
+}  // namespace
 
 Server::Server(QObject* parent)
   : QObject(parent)
@@ -140,6 +174,7 @@ QJsonObject Server::getRecording() const {
 
 void Server::setEventBroadcastingEnabled(bool enabled) {
   broadcaster_->setEnabled(enabled);
+  updateUiEventTrackingState();
 }
 
 bool Server::isEventBroadcastingEnabled() const {
@@ -332,6 +367,7 @@ void Server::onClientDisconnected() {
   if (!clientId.isEmpty()) {
     // Remove from event broadcaster subscriptions
     broadcaster_->removeClient(clientId);
+    updateUiEventTrackingState();
 
     clients_.remove(clientId);
     socketToClientId_.remove(socket);
@@ -358,9 +394,80 @@ void Server::onEventReady(const QString& eventType, const QJsonObject& data,
   }
 }
 
+void Server::onFocusChanged(QWidget* oldWidget, QWidget* newWidget) {
+  if (!broadcaster_->isEnabled() || !broadcaster_->hasSubscribers("focus_changed")) {
+    return;
+  }
+
+  ElementFinder finder;
+
+  QJsonObject eventData;
+  eventData["oldPath"] = oldWidget ? finder.pathFor(oldWidget) : QString();
+  eventData["newPath"] = newWidget ? finder.pathFor(newWidget) : QString();
+  eventData["oldObjectName"] = oldWidget ? oldWidget->objectName() : QString();
+  eventData["newObjectName"] = newWidget ? newWidget->objectName() : QString();
+
+  broadcaster_->emitEvent("focus_changed", eventData);
+}
+
+void Server::onPropertyPollTimeout() {
+  if (!broadcaster_->isEnabled() || !broadcaster_->hasSubscribers("property_changed")) {
+    return;
+  }
+
+  ElementFinder finder;
+
+  for (PropertyWatch& watch : propertyWatches_) {
+    auto findResult = finder.find(watch.selector);
+    QWidget* widget = findResult.widget;
+
+    if (widget != watch.widget) {
+      watch.widget = widget;
+      watch.initialized = false;
+    }
+
+    if (!watch.widget) {
+      continue;
+    }
+
+    QVariant currentValue = watch.widget->property(watch.property.toUtf8().constData());
+    if (!currentValue.isValid()) {
+      continue;
+    }
+
+    if (!watch.initialized) {
+      watch.lastValue = currentValue;
+      watch.initialized = true;
+      continue;
+    }
+
+    if (currentValue == watch.lastValue) {
+      continue;
+    }
+
+    QJsonObject eventData;
+    eventData["path"] = finder.pathFor(watch.widget);
+    eventData["objectName"] = watch.widget->objectName();
+    eventData["class"] = QString::fromLatin1(watch.widget->metaObject()->className());
+    eventData["property"] = watch.property;
+    eventData["old"] = variantToJsonValue(watch.lastValue);
+    eventData["new"] = variantToJsonValue(currentValue);
+
+    watch.lastValue = currentValue;
+    broadcaster_->emitEvent("property_changed", eventData);
+  }
+}
+
 // ========== Message Handling ==========
 
 void Server::handleMessage(QWebSocket* client, const QJsonObject& message) {
+  // Transaction requests are sent without a "type" field and are routed directly.
+  // This also supports clients that include both {"type":"command","transaction":true}.
+  if (message.value("transaction").toBool(false)) {
+    handleTransaction(client, message);
+    return;
+  }
+
   QString typeStr = message.value("type").toString();
   auto type = stringToMessageType(typeStr);
 
@@ -472,9 +579,59 @@ void Server::handleCommand(QWebSocket* client, const QJsonObject& message) {
   });
 }
 
+void Server::handleTransaction(QWebSocket* client, const QJsonObject& message) {
+  Transaction tx = Transaction::fromJson(message);
+  emit requestReceived(tx.id, "transaction");
+
+  if (loggingEnabled_) {
+    qDebug() << "Transaction:" << tx.id << "steps:" << tx.steps.size();
+  }
+
+  // Schedule transaction execution asynchronously for consistency with command handling.
+  QTimer::singleShot(0, this, [this, client, tx]() {
+    if (!socketToClientId_.contains(client)) {
+      if (loggingEnabled_) {
+        qDebug() << "Transaction" << tx.id << "skipped: client disconnected";
+      }
+      return;
+    }
+
+    TransactionResponse result;
+    if (QThread::currentThread() == qApp->thread()) {
+      result = executor_->execute(tx);
+    } else {
+      QMetaObject::invokeMethod(
+          qApp, [&]() { result = executor_->execute(tx); }, Qt::BlockingQueuedConnection);
+    }
+
+    if (broadcaster_->isEnabled() && broadcaster_->hasSubscribers("command_executed")) {
+      QJsonObject eventData;
+      eventData["command"] = "transaction";
+      eventData["steps"] = tx.steps.size();
+      eventData["success"] = result.success;
+      eventData["completed_steps"] = result.completedSteps;
+      broadcaster_->emitEvent("command_executed", eventData);
+    }
+
+    emit responseReady(tx.id, result.success);
+
+    if (!socketToClientId_.contains(client)) {
+      if (loggingEnabled_) {
+        qDebug() << "Transaction" << tx.id << "completed but client disconnected";
+      }
+      return;
+    }
+
+    QJsonObject responseJson = result.toJson();
+    responseJson["type"] = messageTypeToString(MessageType::Response);
+    sendResponse(client, responseJson);
+  });
+}
+
 void Server::handleSubscribe(QWebSocket* client, const QJsonObject& message) {
   QString clientId = clientIdForSocket(client);
   QString eventType = message.value("event_type").toString();
+  QJsonObject filter = message.value("filter").toObject();
 
   if (eventType.isEmpty()) {
     QJsonObject errorResponse;
@@ -487,10 +644,61 @@ void Server::handleSubscribe(QWebSocket* client, const QJsonObject& message) {
     return;
   }
 
-  broadcaster_->subscribe(clientId, eventType);
+  static const QStringList supportedEventList = EventBroadcaster::availableEventTypes();
+  static QSet<QString> supportedEvents;
+  if (supportedEvents.isEmpty()) {
+    for (const QString& evt : supportedEventList) {
+      supportedEvents.insert(evt);
+    }
+  }
+  if (!supportedEvents.contains(eventType)) {
+    QJsonObject errorResponse;
+    errorResponse["type"] = messageTypeToString(MessageType::Response);
+    errorResponse["id"] = message.value("id").toString();
+    errorResponse["success"] = false;
+    errorResponse["error"] =
+        QJsonObject{ { "code", "INVALID_PARAMS" },
+                     { "message", QStringLiteral("Unsupported event_type: %1").arg(eventType) } };
+    sendResponse(client, errorResponse);
+    return;
+  }
+
+  if (!filter.isEmpty()) {
+    const bool hasTarget = filter.contains("target");
+    const bool hasProperty = filter.contains("property");
+    if (eventType == "property_changed") {
+      if (!hasTarget || !hasProperty || !filter.value("target").isString() ||
+          !filter.value("property").isString()) {
+        QJsonObject errorResponse;
+        errorResponse["type"] = messageTypeToString(MessageType::Response);
+        errorResponse["id"] = message.value("id").toString();
+        errorResponse["success"] = false;
+        errorResponse["error"] = QJsonObject{
+          { "code", "INVALID_PARAMS" },
+          { "message", "property_changed subscriptions require filter.target and filter.property" }
+        };
+        sendResponse(client, errorResponse);
+        return;
+      }
+    } else if (hasProperty) {
+      QJsonObject errorResponse;
+      errorResponse["type"] = messageTypeToString(MessageType::Response);
+      errorResponse["id"] = message.value("id").toString();
+      errorResponse["success"] = false;
+      errorResponse["error"] =
+          QJsonObject{ { "code", "INVALID_PARAMS" },
+                       { "message",
+                         "filter.property is only valid for property_changed subscriptions" } };
+      sendResponse(client, errorResponse);
+      return;
+    }
+  }
+
+  broadcaster_->subscribe(clientId, eventType, filter);
+  updateUiEventTrackingState();
 
   if (loggingEnabled_) {
-    qDebug() << "Client" << clientId << "subscribed to" << eventType;
+    qDebug() << "Client" << clientId << "subscribed to" << eventType << "filter" << filter;
   }
 
   QJsonObject response;
@@ -507,11 +715,13 @@ void Server::handleUnsubscribe(QWebSocket* client, const QJsonObject& message) {
 
   if (eventType.isEmpty()) {
     broadcaster_->unsubscribeAll(clientId);
+    updateUiEventTrackingState();
     if (loggingEnabled_) {
       qDebug() << "Client" << clientId << "unsubscribed from all events";
     }
   } else {
     broadcaster_->unsubscribe(clientId, eventType);
+    updateUiEventTrackingState();
     if (loggingEnabled_) {
       qDebug() << "Client" << clientId << "unsubscribed from" << eventType;
     }
@@ -523,6 +733,132 @@ void Server::handleUnsubscribe(QWebSocket* client, const QJsonObject& message) {
   response["success"] = true;
   response["result"] = QJsonObject{ { "unsubscribed", eventType.isEmpty() ? "all" : eventType } };
   sendResponse(client, response);
+}
+
+bool Server::eventFilter(QObject* watched, QEvent* event) {
+  if (!uiEventTrackingActive_) {
+    return QObject::eventFilter(watched, event);
+  }
+
+  if (event->type() == QEvent::ChildAdded) {
+    auto* childEvent = static_cast<QChildEvent*>(event);
+    QObject* child = childEvent ? childEvent->child() : nullptr;
+    if (auto* childWidget = qobject_cast<QWidget*>(child)) {
+      registerWidgetLifecycle(childWidget);
+
+      if (broadcaster_->isEnabled() && broadcaster_->hasSubscribers("widget_created")) {
+        ElementFinder finder;
+        QJsonObject eventData;
+        eventData["path"] = finder.pathFor(childWidget);
+        eventData["objectName"] = childWidget->objectName();
+        eventData["class"] = QString::fromLatin1(childWidget->metaObject()->className());
+        if (auto* parentWidget = qobject_cast<QWidget*>(watched)) {
+          eventData["parentPath"] = finder.pathFor(parentWidget);
+        }
+        broadcaster_->emitEvent("widget_created", eventData);
+      }
+    }
+  }
+
+  return QObject::eventFilter(watched, event);
+}
+
+void Server::updateUiEventTrackingState() {
+  const bool needsCoreTracking =
+      broadcaster_->isEnabled() && (broadcaster_->hasSubscribers("widget_created") ||
+                                    broadcaster_->hasSubscribers("widget_destroyed") ||
+                                    broadcaster_->hasSubscribers("focus_changed") ||
+                                    broadcaster_->hasSubscribers("property_changed"));
+
+  if (needsCoreTracking && !uiEventTrackingActive_) {
+    uiEventTrackingActive_ = true;
+    qApp->installEventFilter(this);
+    focusChangedConnection_ =
+        connect(qApp, &QApplication::focusChanged, this, &Server::onFocusChanged);
+
+    // Track existing widgets for lifecycle events.
+    for (QWidget* topLevel : QApplication::topLevelWidgets()) {
+      registerWidgetLifecycle(topLevel);
+      const QList<QWidget*> children = topLevel->findChildren<QWidget*>();
+      for (QWidget* child : children) {
+        registerWidgetLifecycle(child);
+      }
+    }
+  } else if (!needsCoreTracking && uiEventTrackingActive_) {
+    uiEventTrackingActive_ = false;
+    qApp->removeEventFilter(this);
+    if (focusChangedConnection_) {
+      disconnect(focusChangedConnection_);
+      focusChangedConnection_ = QMetaObject::Connection();
+    }
+    lifecycleTrackedWidgets_.clear();
+  }
+
+  if (broadcaster_->isEnabled() && broadcaster_->hasSubscribers("property_changed")) {
+    refreshPropertyWatches();
+    if (!propertyPollTimer_.isActive()) {
+      propertyPollTimer_.setInterval(100);
+      connect(&propertyPollTimer_, &QTimer::timeout, this, &Server::onPropertyPollTimeout,
+              Qt::UniqueConnection);
+      propertyPollTimer_.start();
+    }
+  } else {
+    propertyPollTimer_.stop();
+    propertyWatches_.clear();
+  }
+}
+
+void Server::refreshPropertyWatches() {
+  QList<PropertyWatch> watches;
+  const QList<QJsonObject> filters = broadcaster_->filtersForEvent("property_changed");
+  QSet<QString> dedupe;
+
+  for (const QJsonObject& filter : filters) {
+    const QString selector = filter.value("target").toString();
+    const QString property = filter.value("property").toString();
+    if (selector.isEmpty() || property.isEmpty()) {
+      continue;
+    }
+    const QString key = selector + "|" + property;
+    if (dedupe.contains(key)) {
+      continue;
+    }
+    dedupe.insert(key);
+    watches.append(PropertyWatch{ selector, property, nullptr, QVariant(), false });
+  }
+
+  propertyWatches_ = watches;
+}
+
+void Server::registerWidgetLifecycle(QObject* object) {
+  if (!object || lifecycleTrackedWidgets_.contains(object)) {
+    return;
+  }
+
+  auto* widget = qobject_cast<QWidget*>(object);
+  if (!widget) {
+    return;
+  }
+
+  lifecycleTrackedWidgets_.insert(widget);
+
+  ElementFinder finder;
+  const QString path = finder.pathFor(widget);
+  const QString objectName = widget->objectName();
+  const QString className = QString::fromLatin1(widget->metaObject()->className());
+
+  connect(widget, &QObject::destroyed, this, [this, widget, path, objectName, className]() {
+    lifecycleTrackedWidgets_.remove(widget);
+    if (!broadcaster_->isEnabled() || !broadcaster_->hasSubscribers("widget_destroyed")) {
+      return;
+    }
+
+    QJsonObject eventData;
+    eventData["path"] = path;
+    eventData["objectName"] = objectName;
+    eventData["class"] = className;
+    broadcaster_->emitEvent("widget_destroyed", eventData);
+  });
 }
 
 void Server::handleRecordStart(QWebSocket* client, const QJsonObject& message) {

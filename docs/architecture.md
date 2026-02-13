@@ -48,7 +48,8 @@ How a command travels from WebSocket to response:
                                           │
 2. Server::onTextMessageReceived()        │
                                           ▼
-3. Server::handleMessage() ─── parses type, routes to handleCommand()
+3. Server::handleMessage() ─── routes either transaction envelopes (`transaction: true`) or
+   typed messages to handlers
                                           │
 4. QTimer::singleShot(0, ...) ◄───────────┘  (async queue for dialog support)
                                           │
@@ -386,11 +387,7 @@ Methods must be `Q_INVOKABLE`. Introspected via Qt meta-object system.
 
 ### Event Types
 
-- `widget_created` - New widget added
-- `widget_destroyed` - Widget removed
-- `property_changed` - Property value changed
-- `focus_changed` - Focus moved
-- `command_executed` - After each command
+- `command_executed` - After each command or transaction
 
 ### Subscription Model
 

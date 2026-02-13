@@ -68,6 +68,74 @@ class TestExecutor:
 
         return self.client.command(command, params)
 
+    def check_step_result(self, step: dict, resp: Response) -> tuple[bool, str | None]:
+        """Validate semantic success for a step response."""
+        command = step.get("command")
+        target = step.get("params", {}).get("target")
+
+        # Boolean checks should fail the step when false.
+        if command in ("exists", "is_visible") and not bool(resp.value):
+            return False, f"{command} returned false for target {target}"
+
+        # Assert command reports pass/fail in payload, not in top-level success.
+        if command == "assert" and not bool(resp.value):
+            actual = resp.data.get("actual")
+            expected = resp.data.get("expected")
+            operator = resp.data.get("operator")
+            prop = resp.data.get("property")
+            return False, f"assert failed: {prop} {operator} {expected}, got {actual}"
+
+        # Optional explicit expectation checks for command responses.
+        expect = step.get("expect")
+        if expect is None:
+            return True, None
+
+        if "value" in expect and resp.value != expect["value"]:
+            return False, f"expected value {expect['value']!r}, got {resp.value!r}"
+
+        if "value_contains" in expect:
+            needle = expect["value_contains"]
+            haystack = resp.value
+            if isinstance(haystack, str):
+                if needle not in haystack:
+                    return False, f"expected value to contain {needle!r}, got {haystack!r}"
+            elif isinstance(haystack, list):
+                if needle not in haystack:
+                    return False, f"expected value list to contain {needle!r}, got {haystack!r}"
+            else:
+                return False, f"value_contains requires string/list value, got {type(haystack).__name__}"
+
+        if "count_min" in expect:
+            count = resp.data.get("count")
+            if not isinstance(count, int) or count < int(expect["count_min"]):
+                return False, f"expected count >= {expect['count_min']}, got {count!r}"
+
+        if "data_contains" in expect:
+            required = expect["data_contains"]
+            if not isinstance(required, dict):
+                return False, "expect.data_contains must be an object"
+            for key, expected_value in required.items():
+                if key not in resp.data:
+                    return False, f"expected response data to contain key {key!r}"
+                if resp.data[key] != expected_value:
+                    return False, (
+                        f"expected response data[{key!r}] == {expected_value!r}, "
+                        f"got {resp.data[key]!r}"
+                    )
+
+        if "data_list_contains" in expect:
+            requirements = expect["data_list_contains"]
+            if not isinstance(requirements, dict):
+                return False, "expect.data_list_contains must be an object"
+            for key, expected_item in requirements.items():
+                value = resp.data.get(key)
+                if not isinstance(value, list):
+                    return False, f"expected response data[{key!r}] to be a list, got {type(value).__name__}"
+                if expected_item not in value:
+                    return False, f"expected response data[{key!r}] to contain {expected_item!r}"
+
+        return True, None
+
     def check_assertion(self, assertion: dict) -> tuple[bool, str | None]:
         """Check an assertion."""
         target = assertion.get("target")
@@ -80,8 +148,7 @@ class TestExecutor:
         if not resp.success:
             return False, resp.error
 
-        # The response has "result" nested, so check both locations for compatibility
-        result = resp.data.get("result", resp.data)
+        result = resp.data
         passed = result.get("passed", False)
         if not passed:
             actual = result.get("actual")
@@ -107,6 +174,11 @@ class TestExecutor:
 
             if not resp.success:
                 error = f"Step {i+1} failed: {resp.error}"
+                break
+
+            valid, step_error = self.check_step_result(step, resp)
+            if not valid:
+                error = f"Step {i+1} failed: {step_error}"
                 break
 
             steps_completed += 1
@@ -151,10 +223,30 @@ class TestExecutor:
         # Run setup
         if setup:
             self.log("Running setup...")
-            for step in setup:
+            for i, step in enumerate(setup):
                 resp = self.execute_step(step)
                 if not resp.success:
-                    print(f"Setup failed: {resp.error}")
+                    print(f"Setup failed (step {i+1}): {resp.error}")
+                    result.results.append(TestResult(
+                        name="__setup__",
+                        passed=False,
+                        duration_ms=0.0,
+                        error=resp.error or "setup step failed",
+                        steps_completed=i,
+                        steps_total=len(setup),
+                    ))
+                    return result
+                valid, step_error = self.check_step_result(step, resp)
+                if not valid:
+                    print(f"Setup failed (step {i+1}): {step_error}")
+                    result.results.append(TestResult(
+                        name="__setup__",
+                        passed=False,
+                        duration_ms=0.0,
+                        error=step_error or "setup validation failed",
+                        steps_completed=i,
+                        steps_total=len(setup),
+                    ))
                     return result
 
         # Run tests

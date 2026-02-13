@@ -336,16 +336,7 @@ QJsonObject CommandExecutor::cmdGetProperty(const QJsonObject& params) {
     return QJsonObject{ { "error", error } };
   }
 
-  QJsonValue jsonValue;
-  if (value.canConvert<QString>()) {
-    jsonValue = value.toString();
-  } else if (value.canConvert<int>()) {
-    jsonValue = value.toInt();
-  } else if (value.canConvert<bool>()) {
-    jsonValue = value.toBool();
-  } else if (value.canConvert<double>()) {
-    jsonValue = value.toDouble();
-  }
+  QJsonValue jsonValue = variantToJson(value);
 
   return QJsonObject{ { "property", propertyName }, { "value", jsonValue } };
 }

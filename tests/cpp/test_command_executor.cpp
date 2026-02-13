@@ -380,8 +380,8 @@ private slots:
     Response resp = executor.execute(cmd);
 
     QVERIFY(resp.success);
-    // Note: cmdGetProperty converts int to string due to QString check being first
-    QCOMPARE(resp.result.value("value").toString(), QString("50"));
+    QVERIFY(resp.result.value("value").isDouble());
+    QCOMPARE(resp.result.value("value").toInt(), 50);
   }
 
   void testGetPropertyBool() {
@@ -396,6 +396,7 @@ private slots:
     Response resp = executor.execute(cmd);
 
     QVERIFY(resp.success);
+    QVERIFY(resp.result.value("value").isBool());
     QCOMPARE(resp.result.value("value").toBool(), false);
   }
 
@@ -1111,7 +1112,19 @@ private slots:
     Response resp = executor.execute(cmd);
 
     QVERIFY(resp.success);
-    // Changes may or may not be present depending on what actually changed
+    QVERIFY(resp.result.contains("changes"));
+    QJsonArray changes = resp.result.value("changes").toArray();
+    QVERIFY(!changes.isEmpty());
+
+    bool foundTextChange = false;
+    for (const QJsonValue& changeVal : changes) {
+      QJsonObject change = changeVal.toObject();
+      if (change.value("property").toString() == "text") {
+        foundTextChange = true;
+        break;
+      }
+    }
+    QVERIFY(foundTextChange);
   }
 
   // === Duration tracking ===
@@ -1952,7 +1965,7 @@ private slots:
     Response resp = executor.execute(cmd);
 
     QVERIFY(resp.success);
-    QVERIFY(lineEdit_->text().endsWith("new text"));
+    QCOMPARE(lineEdit_->text(), QString("new text"));
   }
 
   // === Test call with missing method ===
@@ -2219,8 +2232,9 @@ private slots:
 
     Response resp = executor.execute(cmd);
 
-    // Note: This might fail if invoke doesn't support args yet
-    QVERIFY(resp.success || resp.error.code == "INVOCATION_FAILED");
+    QVERIFY(!resp.success);
+    QCOMPARE(resp.error.code, QString("INVOCATION_FAILED"));
+    QCOMPARE(lineEdit_->text(), QString(""));
   }
 
   void testGetActionsNotFound() {

@@ -236,7 +236,7 @@ private slots:
     QJsonObject cmd;
     cmd["type"] = "command";
     cmd["id"] = "test-1";
-    cmd["name"] = "get_tree";
+    cmd["command"] = "get_tree";
     cmd["params"] = QJsonObject{};
 
     client.sendTextMessage(QString::fromUtf8(QJsonDocument(cmd).toJson()));
@@ -250,6 +250,44 @@ private slots:
 
     // Response should have type "response"
     QCOMPARE(respObj.value("type").toString(), QString("response"));
+    QVERIFY(respObj.value("success").toBool());
+    QVERIFY(respObj.value("result").isObject());
+
+    client.close();
+    server.stop();
+  }
+
+  void testClientSendTransaction() {
+    Server server;
+    server.enableLogging(false);
+    server.setRootWidget(testWidget_);
+    QVERIFY(server.start(0));
+
+    QWebSocket client;
+    QSignalSpy clientConnectedSpy(&client, &QWebSocket::connected);
+    QSignalSpy messageReceivedSpy(&client, &QWebSocket::textMessageReceived);
+
+    QString url = QString("ws://127.0.0.1:%1").arg(server.port());
+    client.open(QUrl(url));
+    QVERIFY(clientConnectedSpy.wait(2000));
+
+    QJsonObject tx;
+    tx["id"] = "tx-1";
+    tx["transaction"] = true;
+    tx["steps"] =
+        QJsonArray{ QJsonObject{ { "command", "get_tree" }, { "params", QJsonObject{} } } };
+
+    client.sendTextMessage(QString::fromUtf8(QJsonDocument(tx).toJson()));
+    QVERIFY(messageReceivedSpy.wait(3000));
+
+    QString response = messageReceivedSpy.at(0).at(0).toString();
+    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8());
+    QJsonObject respObj = doc.object();
+
+    QCOMPARE(respObj.value("type").toString(), QString("response"));
+    QVERIFY(respObj.value("success").toBool());
+    QCOMPARE(respObj.value("completed_steps").toInt(), 1);
+    QCOMPARE(respObj.value("total_steps").toInt(), 1);
 
     client.close();
     server.stop();
@@ -332,7 +370,7 @@ private slots:
     QJsonObject subscribeMsg;
     subscribeMsg["type"] = "subscribe";
     subscribeMsg["id"] = "sub-1";
-    subscribeMsg["event_type"] = "click";
+    subscribeMsg["event_type"] = "command_executed";
     client.sendTextMessage(QString::fromUtf8(QJsonDocument(subscribeMsg).toJson()));
 
     QVERIFY(messageReceivedSpy.wait(2000));
@@ -345,13 +383,42 @@ private slots:
     QJsonObject unsubscribeMsg;
     unsubscribeMsg["type"] = "unsubscribe";
     unsubscribeMsg["id"] = "unsub-1";
-    unsubscribeMsg["event_type"] = "click";
+    unsubscribeMsg["event_type"] = "command_executed";
     client.sendTextMessage(QString::fromUtf8(QJsonDocument(unsubscribeMsg).toJson()));
 
     QVERIFY(messageReceivedSpy.wait(2000));
     response = messageReceivedSpy.at(0).at(0).toString();
     doc = QJsonDocument::fromJson(response.toUtf8());
     QVERIFY(doc.object().value("success").toBool());
+
+    client.close();
+    server.stop();
+  }
+
+  void testSubscribeUnsupportedEventType() {
+    Server server;
+    server.enableLogging(false);
+    QVERIFY(server.start(0));
+
+    QWebSocket client;
+    QSignalSpy clientConnectedSpy(&client, &QWebSocket::connected);
+    QSignalSpy messageReceivedSpy(&client, &QWebSocket::textMessageReceived);
+
+    QString url = QString("ws://127.0.0.1:%1").arg(server.port());
+    client.open(QUrl(url));
+    QVERIFY(clientConnectedSpy.wait(2000));
+
+    QJsonObject subscribeMsg;
+    subscribeMsg["type"] = "subscribe";
+    subscribeMsg["id"] = "sub-unsupported";
+    subscribeMsg["event_type"] = "click";
+    client.sendTextMessage(QString::fromUtf8(QJsonDocument(subscribeMsg).toJson()));
+
+    QVERIFY(messageReceivedSpy.wait(2000));
+    QJsonDocument doc = QJsonDocument::fromJson(messageReceivedSpy.at(0).at(0).toString().toUtf8());
+    QVERIFY(!doc.object().value("success").toBool());
+    QCOMPARE(doc.object().value("error").toObject().value("code").toString(),
+             QString("INVALID_PARAMS"));
 
     client.close();
     server.stop();
@@ -383,6 +450,98 @@ private slots:
     QVERIFY(!doc.object().value("success").toBool());
     QCOMPARE(doc.object().value("error").toObject().value("code").toString(),
              QString("MISSING_PARAM"));
+
+    client.close();
+    server.stop();
+  }
+
+  void testSubscribeRejectsPropertyFilterOnNonPropertyEvent() {
+    Server server;
+    server.enableLogging(false);
+    QVERIFY(server.start(0));
+
+    QWebSocket client;
+    QSignalSpy clientConnectedSpy(&client, &QWebSocket::connected);
+    QSignalSpy messageReceivedSpy(&client, &QWebSocket::textMessageReceived);
+
+    QString url = QString("ws://127.0.0.1:%1").arg(server.port());
+    client.open(QUrl(url));
+    QVERIFY(clientConnectedSpy.wait(2000));
+
+    QJsonObject subscribeMsg;
+    subscribeMsg["type"] = "subscribe";
+    subscribeMsg["id"] = "sub-prop-invalid";
+    subscribeMsg["event_type"] = "command_executed";
+    subscribeMsg["filter"] =
+        QJsonObject{ { "target", "@name:testWidget" }, { "property", "enabled" } };
+    client.sendTextMessage(QString::fromUtf8(QJsonDocument(subscribeMsg).toJson()));
+
+    QVERIFY(messageReceivedSpy.wait(2000));
+    QJsonDocument doc = QJsonDocument::fromJson(messageReceivedSpy.at(0).at(0).toString().toUtf8());
+    QVERIFY(!doc.object().value("success").toBool());
+    QCOMPARE(doc.object().value("error").toObject().value("code").toString(),
+             QString("INVALID_PARAMS"));
+
+    client.close();
+    server.stop();
+  }
+
+  void testSubscribeRequiresPropertyChangedFilterFields() {
+    Server server;
+    server.enableLogging(false);
+    QVERIFY(server.start(0));
+
+    QWebSocket client;
+    QSignalSpy clientConnectedSpy(&client, &QWebSocket::connected);
+    QSignalSpy messageReceivedSpy(&client, &QWebSocket::textMessageReceived);
+
+    QString url = QString("ws://127.0.0.1:%1").arg(server.port());
+    client.open(QUrl(url));
+    QVERIFY(clientConnectedSpy.wait(2000));
+
+    QJsonObject subscribeMsg;
+    subscribeMsg["type"] = "subscribe";
+    subscribeMsg["id"] = "sub-prop-missing";
+    subscribeMsg["event_type"] = "property_changed";
+    subscribeMsg["filter"] = QJsonObject{ { "target", "@name:testWidget" } };  // missing property
+    client.sendTextMessage(QString::fromUtf8(QJsonDocument(subscribeMsg).toJson()));
+
+    QVERIFY(messageReceivedSpy.wait(2000));
+    QJsonDocument doc = QJsonDocument::fromJson(messageReceivedSpy.at(0).at(0).toString().toUtf8());
+    QVERIFY(!doc.object().value("success").toBool());
+    QCOMPARE(doc.object().value("error").toObject().value("code").toString(),
+             QString("INVALID_PARAMS"));
+
+    client.close();
+    server.stop();
+  }
+
+  void testSubscribeAcceptsPropertyChangedFilter() {
+    Server server;
+    server.enableLogging(false);
+    QVERIFY(server.start(0));
+
+    QWebSocket client;
+    QSignalSpy clientConnectedSpy(&client, &QWebSocket::connected);
+    QSignalSpy messageReceivedSpy(&client, &QWebSocket::textMessageReceived);
+
+    QString url = QString("ws://127.0.0.1:%1").arg(server.port());
+    client.open(QUrl(url));
+    QVERIFY(clientConnectedSpy.wait(2000));
+
+    QJsonObject subscribeMsg;
+    subscribeMsg["type"] = "subscribe";
+    subscribeMsg["id"] = "sub-prop-valid";
+    subscribeMsg["event_type"] = "property_changed";
+    subscribeMsg["filter"] =
+        QJsonObject{ { "target", "@name:testWidget" }, { "property", "windowTitle" } };
+    client.sendTextMessage(QString::fromUtf8(QJsonDocument(subscribeMsg).toJson()));
+
+    QVERIFY(messageReceivedSpy.wait(2000));
+    QJsonDocument doc = QJsonDocument::fromJson(messageReceivedSpy.at(0).at(0).toString().toUtf8());
+    QVERIFY(doc.object().value("success").toBool());
+    QCOMPARE(doc.object().value("result").toObject().value("subscribed").toString(),
+             QString("property_changed"));
 
     client.close();
     server.stop();
@@ -474,7 +633,8 @@ private slots:
     clientNoKey.open(QUrl(url));
 
     // Should be rejected
-    QVERIFY(clientNoKeyDisconnectedSpy.wait(2000) || !clientNoKeyConnectedSpy.wait(500));
+    QVERIFY(clientNoKeyDisconnectedSpy.wait(2000));
+    QVERIFY(clientNoKey.state() != QAbstractSocket::ConnectedState);
 
     // Connect with valid API key
     QWebSocket clientWithKey;

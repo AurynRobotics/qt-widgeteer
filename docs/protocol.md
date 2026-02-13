@@ -70,6 +70,9 @@ All messages have a `type` field. Client-to-server message types:
 | `record_start` | Start recording commands |
 | `record_stop` | Stop recording and get results |
 
+Transactions are sent as a separate request envelope with `"transaction": true` (see
+[Transactions](#transactions)) and do not require a `type` field.
+
 Server-to-client message types:
 
 | Type | Description |
@@ -168,11 +171,7 @@ When subscribed events occur:
 
 | Event Type | Description |
 |------------|-------------|
-| `command_executed` | After each command completes |
-| `widget_created` | Widget added to tree |
-| `widget_destroyed` | Widget removed from tree |
-| `property_changed` | Property value changed |
-| `focus_changed` | Focus moved between widgets |
+| `command_executed` | After each command or transaction completes |
 
 ### Unsubscribe
 

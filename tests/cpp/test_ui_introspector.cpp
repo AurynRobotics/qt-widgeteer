@@ -550,9 +550,10 @@ private slots:
 
     QJsonObject result = introspector.getTree(&root, opts);
 
-    // The result should be the button (or wrapped)
-    // Since root doesn't match filter but has matching children
     QVERIFY(!result.isEmpty());
+    QCOMPARE(result.value("class").toString(), QString("QPushButton"));
+    QCOMPARE(result.value("objectName").toString(), QString("btn"));
+    QVERIFY(result.value("children").toArray().isEmpty());
   }
 
   void testGetTreeWithClassFilterNoMatch() {
@@ -582,14 +583,18 @@ private slots:
     auto* hiddenChild = new QPushButton("Hidden", &root);
     hiddenChild->setObjectName("hidden");
     hiddenChild->setVisible(false);
+    root.show();
+    QTest::qWait(50);
 
     UIIntrospector::TreeOptions opts;
     opts.includeInvisible = false;
 
     QJsonObject result = introspector.getTree(&root, opts);
 
-    // Root is not visible in offscreen mode, so may return empty or filtered
-    Q_UNUSED(result);
+    QVERIFY(!result.isEmpty());
+    QJsonArray children = result.value("children").toArray();
+    QCOMPARE(children.size(), 1);
+    QCOMPARE(children[0].toObject().value("objectName").toString(), QString("visible"));
   }
 };
 

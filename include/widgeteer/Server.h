@@ -7,10 +7,14 @@
 #include <widgeteer/Protocol.h>
 
 #include <QObject>
+#include <QEvent>
+#include <QSet>
 #include <QPointer>
+#include <QVariant>
 #include <QWebSocket>
 #include <QWebSocketServer>
 #include <QWidget>
+#include <QTimer>
 
 #include <functional>
 #include <memory>
@@ -142,11 +146,16 @@ private slots:
   void onClientDisconnected();
   void onEventReady(const QString& eventType, const QJsonObject& data,
                     const QStringList& recipientClientIds);
+  void onFocusChanged(QWidget* oldWidget, QWidget* newWidget);
+  void onPropertyPollTimeout();
 
 private:
+  bool eventFilter(QObject* watched, QEvent* event) override;
+
   // Message handling
   void handleMessage(QWebSocket* client, const QJsonObject& message);
   void handleCommand(QWebSocket* client, const QJsonObject& message);
+  void handleTransaction(QWebSocket* client, const QJsonObject& message);
   void handleSubscribe(QWebSocket* client, const QJsonObject& message);
   void handleUnsubscribe(QWebSocket* client, const QJsonObject& message);
   void handleRecordStart(QWebSocket* client, const QJsonObject& message);
@@ -164,6 +173,9 @@ private:
 
   // Get client ID from socket
   QString clientIdForSocket(QWebSocket* socket) const;
+  void updateUiEventTrackingState();
+  void refreshPropertyWatches();
+  void registerWidgetLifecycle(QObject* object);
 
   std::unique_ptr<QWebSocketServer> wsServer_;
   std::unique_ptr<CommandExecutor> executor_;
@@ -186,6 +198,20 @@ private:
   // Extensibility: registered objects and custom commands
   QHash<QString, QPointer<QObject>> registeredObjects_;
   QHash<QString, CommandHandler> customCommands_;
+
+  struct PropertyWatch {
+    QString selector;
+    QString property;
+    QPointer<QWidget> widget;
+    QVariant lastValue;
+    bool initialized = false;
+  };
+
+  bool uiEventTrackingActive_ = false;
+  QMetaObject::Connection focusChangedConnection_;
+  QTimer propertyPollTimer_;
+  QList<PropertyWatch> propertyWatches_;
+  QSet<QObject*> lifecycleTrackedWidgets_;
 };
 
 }  // namespace widgeteer

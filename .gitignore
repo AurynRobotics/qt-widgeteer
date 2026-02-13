@@ -20,3 +20,4 @@ qrc_*.cpp
 ui_*.h
 /coverage/*
 /coverage_html/*
+/tests/__pycache__/*

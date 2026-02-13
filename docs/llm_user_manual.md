@@ -304,7 +304,7 @@ Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `contains`
 {"type":"unsubscribe","event_type":"command_executed"}
 ```
 
-Event types: `widget_created`, `widget_destroyed`, `property_changed`, `focus_changed`, `command_executed`
+Event types: `command_executed`
 
 ### Recording
 ```json

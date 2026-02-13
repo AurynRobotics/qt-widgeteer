@@ -215,6 +215,12 @@ class WidgeteerClient:
         self._event_handlers: dict[str, list[Callable]] = {}
         self._receive_task = None
 
+    def _fail_pending(self, exc: Exception) -> None:
+        """Fail all pending command futures immediately."""
+        for future in self._pending.values():
+            if not future.done():
+                future.set_exception(exc)
+
     @property
     def ws_url(self) -> str:
         """Build WebSocket URL with optional token."""
@@ -230,6 +236,7 @@ class WidgeteerClient:
 
     async def disconnect(self) -> None:
         """Disconnect from the server."""
+        self._fail_pending(ConnectionError("Disconnected from server"))
         if self._receive_task:
             self._receive_task.cancel()
             try:
@@ -251,7 +258,9 @@ class WidgeteerClient:
                     # Match response to pending request
                     msg_id = data.get("id")
                     if msg_id in self._pending:
-                        self._pending[msg_id].set_result(data)
+                        future = self._pending[msg_id]
+                        if not future.done():
+                            future.set_result(data)
 
                 elif msg_type == "event":
                     # Dispatch to event handlers
@@ -267,8 +276,9 @@ class WidgeteerClient:
                             except Exception as e:
                                 print(f"Event handler error: {e}")
         except asyncio.CancelledError:
-            pass
+            self._fail_pending(ConnectionError("Connection closed"))
         except Exception as e:
+            self._fail_pending(ConnectionError(f"Receive loop error: {e}"))
             print(f"Receive loop error: {e}")
 
     async def _send_and_wait(self, message: dict, timeout: float = 30.0) -> dict:

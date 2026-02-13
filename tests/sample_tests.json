@@ -190,6 +190,14 @@
             "timeout_ms": 1000
           }
         }
+      ],
+      "assertions": [
+        {
+          "target": "@name:outputText",
+          "property": "plainText",
+          "operator": "contains",
+          "value": "Form submitted:"
+        }
       ]
     },
     {
@@ -290,6 +298,14 @@
             "timeout_ms": 1000
           }
         }
+      ],
+      "assertions": [
+        {
+          "target": "@name:outputText",
+          "property": "plainText",
+          "operator": "contains",
+          "value": "Button was clicked"
+        }
       ]
     },
     {
@@ -300,6 +316,9 @@
           "params": {
             "query": "@class:QPushButton",
             "max_results": 20
+          },
+          "expect": {
+            "count_min": 1
           }
         }
       ]
@@ -309,7 +328,12 @@
       "steps": [
         {
           "command": "list_objects",
-          "params": {}
+          "params": {},
+          "expect": {
+            "data_list_contains": {
+              "objects": "myService"
+            }
+          }
         }
       ]
     },
@@ -318,7 +342,12 @@
       "steps": [
         {
           "command": "list_custom_commands",
-          "params": {}
+          "params": {},
+          "expect": {
+            "data_list_contains": {
+              "commands": "echo"
+            }
+          }
         }
       ]
     },
@@ -329,6 +358,12 @@
           "command": "echo",
           "params": {
             "message": "Hello from Widgeteer"
+          },
+          "expect": {
+            "data_contains": {
+              "echo": "Hello from Widgeteer",
+              "length": 20
+            }
           }
         }
       ]
@@ -338,7 +373,13 @@
       "steps": [
         {
           "command": "get_app_info",
-          "params": {}
+          "params": {},
+          "expect": {
+            "data_contains": {
+              "name": "Widgeteer Sample",
+              "version": "1.0.0"
+            }
+          }
         }
       ]
     },
@@ -361,6 +402,9 @@
             "object": "myService",
             "method": "getCounter",
             "args": []
+          },
+          "expect": {
+            "value": 42
           }
         }
       ]
@@ -400,6 +444,9 @@
             "object": "myService",
             "method": "getCounter",
             "args": []
+          },
+          "expect": {
+            "value": 2
           }
         }
       ]
@@ -438,6 +485,9 @@
           "command": "is_visible",
           "params": {
             "target": "@name:confirmDialog"
+          },
+          "expect": {
+            "value": true
           }
         },
         {
@@ -457,6 +507,9 @@
           "command": "exists",
           "params": {
             "target": "@name:confirmDialog"
+          },
+          "expect": {
+            "value": false
           }
         }
       ]
