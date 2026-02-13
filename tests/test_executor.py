@@ -72,22 +72,23 @@ class TestExecutor:
         """Validate semantic success for a step response."""
         command = step.get("command")
         target = step.get("params", {}).get("target")
-
-        # Boolean checks should fail the step when false.
-        if command in ("exists", "is_visible") and not bool(resp.value):
-            return False, f"{command} returned false for target {target}"
-
-        # Assert command reports pass/fail in payload, not in top-level success.
-        if command == "assert" and not bool(resp.value):
-            actual = resp.data.get("actual")
-            expected = resp.data.get("expected")
-            operator = resp.data.get("operator")
-            prop = resp.data.get("property")
-            return False, f"assert failed: {prop} {operator} {expected}, got {actual}"
-
-        # Optional explicit expectation checks for command responses.
         expect = step.get("expect")
+
+        # When an explicit expect block is present it takes full control of
+        # validation, so skip the default boolean / assert heuristics.
         if expect is None:
+            # Boolean checks should fail the step when false.
+            if command in ("exists", "is_visible") and not bool(resp.value):
+                return False, f"{command} returned false for target {target}"
+
+            # Assert command reports pass/fail in payload, not in top-level success.
+            if command == "assert" and not bool(resp.value):
+                actual = resp.data.get("actual")
+                expected = resp.data.get("expected")
+                operator = resp.data.get("operator")
+                prop = resp.data.get("property")
+                return False, f"assert failed: {prop} {operator} {expected}, got {actual}"
+
             return True, None
 
         if "value" in expect and resp.value != expect["value"]:
@@ -131,7 +132,11 @@ class TestExecutor:
                 value = resp.data.get(key)
                 if not isinstance(value, list):
                     return False, f"expected response data[{key!r}] to be a list, got {type(value).__name__}"
-                if expected_item not in value:
+                # Support both flat lists ["a", "b"] and object lists [{"name": "a"}, ...]
+                found = expected_item in value
+                if not found and all(isinstance(v, dict) for v in value):
+                    found = any(v.get("name") == expected_item for v in value)
+                if not found:
                     return False, f"expected response data[{key!r}] to contain {expected_item!r}"
 
         return True, None
