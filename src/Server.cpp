@@ -180,16 +180,43 @@ void Server::registerCommand(const QString& name, CommandHandler handler) {
   }
 
   // Check for conflicts with built-in commands
-  static const QSet<QString> builtinCommands = {
-    "get_tree",      "find",           "describe",        "get_property",   "list_properties",
-    "get_actions",   "get_form_fields", "list_windows",   "click",          "double_click",
-    "right_click",   "type",           "key",             "key_sequence",   "drag",
-    "scroll",        "hover",          "focus",           "set_property",   "invoke",
-    "set_value",     "screenshot",     "assert",          "exists",         "is_visible",
-    "wait",          "wait_idle",      "wait_signal",     "sleep",          "quit",
-    "accept_dialog", "reject_dialog",  "close_window",    "is_dialog_open",
-    "call",          "list_objects",   "list_custom_commands"
-  };
+  static const QSet<QString> builtinCommands = { "get_tree",
+                                                 "find",
+                                                 "describe",
+                                                 "get_property",
+                                                 "list_properties",
+                                                 "get_actions",
+                                                 "get_form_fields",
+                                                 "list_windows",
+                                                 "click",
+                                                 "double_click",
+                                                 "right_click",
+                                                 "type",
+                                                 "key",
+                                                 "key_sequence",
+                                                 "drag",
+                                                 "scroll",
+                                                 "hover",
+                                                 "focus",
+                                                 "set_property",
+                                                 "invoke",
+                                                 "set_value",
+                                                 "screenshot",
+                                                 "assert",
+                                                 "exists",
+                                                 "is_visible",
+                                                 "wait",
+                                                 "wait_idle",
+                                                 "wait_signal",
+                                                 "sleep",
+                                                 "quit",
+                                                 "accept_dialog",
+                                                 "reject_dialog",
+                                                 "close_window",
+                                                 "is_dialog_open",
+                                                 "call",
+                                                 "list_objects",
+                                                 "list_custom_commands" };
 
   if (builtinCommands.contains(name)) {
     qWarning() << "Widgeteer: Cannot override built-in command:" << name;

@@ -418,7 +418,8 @@ QWidget* ElementFinder::resolveSelector(const QString& selector, QString& errorO
       errorOut = QStringLiteral("No widget with accessible name '%1'").arg(name);
     }
   }
-  // Semantic role selectors: @accept, @reject, @apply, @help, @yes, @no, @save, @discard, @close, @reset
+  // Semantic role selectors: @accept, @reject, @apply, @help, @yes, @no, @save, @discard, @close,
+  // @reset
   else if (selector.startsWith("@")) {
     QString role = selector.mid(1).toLower();
     result = byDialogRole(role);

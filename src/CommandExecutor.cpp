@@ -760,9 +760,9 @@ QJsonObject CommandExecutor::cmdCloseWindow(const QJsonObject& params) {
   // Use invokeMethod with QueuedConnection to avoid blocking
   QMetaObject::invokeMethod(window, "close", Qt::QueuedConnection);
 
-  return QJsonObject{
-    { "closed", true }, { "window_title", title }, { "window_class", className }
-  };
+  return QJsonObject{ { "closed", true },
+                      { "window_title", title },
+                      { "window_class", className } };
 }
 
 QJsonObject CommandExecutor::cmdIsDialogOpen(const QJsonObject& params) {
