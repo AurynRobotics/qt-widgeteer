@@ -387,21 +387,44 @@ Methods must be `Q_INVOKABLE`. Introspected via Qt meta-object system.
 
 ### Event Types
 
+- `widget_created` - Widget added to tree (via `QEvent::ChildAdded`)
+- `widget_destroyed` - Widget removed from tree (via `QObject::destroyed`)
+- `property_changed` - Property value changed (via polling at 100ms)
+- `focus_changed` - Focus moved between widgets (via `QApplication::focusChanged`)
 - `command_executed` - After each command or transaction
 
 ### Subscription Model
 
-Two-way hash maps for O(1) lookups:
+Each subscription carries an optional filter. Internally stored as:
 ```cpp
-QHash<QString, QSet<QString>> clientSubscriptions_;  // client → events
-QHash<QString, QSet<QString>> eventSubscribers_;     // event → clients
+struct SubscriptionEntry {
+  QString eventType;
+  QJsonObject filter;  // e.g. {"target": "@name:btn", "property": "text"}
+};
+
+QHash<QString, QList<SubscriptionEntry>> clientSubscriptions_;  // client → entries
+QHash<QString, QSet<QString>> eventSubscribers_;                // event → clients
 ```
+
+Filters support `target` (with `@name:`, `@class:`, path prefix matching) and
+`property` (for `property_changed` only). An empty filter matches all events of
+that type.
+
+### Activation
+
+Event tracking is activated lazily via `updateUiEventTrackingState()`. When no
+clients subscribe to UI events, no event filter is installed and no timer runs.
+When the first subscription arrives the server installs a `QApplication` event
+filter and (for `property_changed`) starts a 100ms poll timer.
 
 ### Emitting Events
 
 ```cpp
-// In CommandExecutor or other component:
-emit eventBroadcaster_->eventReady("command_executed", eventData, recipientIds);
+// Server hooks into Qt event system and calls:
+broadcaster_->emitEvent("widget_created", eventData);
+
+// EventBroadcaster checks filters, determines recipients, emits signal:
+emit eventReady(eventType, data, recipientClientIds);
 
 // Server catches signal and sends to subscribed clients
 ```

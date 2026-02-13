@@ -300,11 +300,14 @@ Operators: `==`, `!=`, `>`, `<`, `>=`, `<=`, `contains`
 
 ### Subscribe to Events
 ```json
-{"type":"subscribe","event_type":"command_executed"}
-{"type":"unsubscribe","event_type":"command_executed"}
+{"type":"subscribe","event_type":"focus_changed"}
+{"type":"subscribe","event_type":"property_changed","filter":{"target":"@name:edit","property":"text"}}
+{"type":"unsubscribe","event_type":"focus_changed"}
 ```
 
-Event types: `command_executed`
+Event types: `widget_created`, `widget_destroyed`, `property_changed`, `focus_changed`, `command_executed`
+
+`property_changed` requires `filter.target` and `filter.property`. Other types accept optional `filter.target`.
 
 ### Recording
 ```json

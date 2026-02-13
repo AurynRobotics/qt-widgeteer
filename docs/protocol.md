@@ -137,9 +137,24 @@ Server-to-client message types:
 {
   "type": "subscribe",
   "id": "sub-1",
-  "event_type": "command_executed"
+  "event_type": "property_changed",
+  "filter": {
+    "target": "@name:nameEdit",
+    "property": "text"
+  }
 }
 ```
+
+The `filter` field is optional. When omitted, all events of the given type are
+delivered. For `property_changed` subscriptions both `filter.target` and
+`filter.property` are **required**; the server rejects the subscription
+otherwise. Other event types accept an optional `filter.target` to restrict
+the scope.
+
+Filter matching supports:
+- `@name:objectName` - match by objectName
+- `@class:ClassName` - match by class
+- Path prefix - e.g. `mainWindow/form` matches `mainWindow/form/edit1`
 
 **Response:**
 ```json
@@ -147,7 +162,7 @@ Server-to-client message types:
   "type": "response",
   "id": "sub-1",
   "success": true,
-  "result": {"subscribed": "command_executed"}
+  "result": {"subscribed": "property_changed"}
 }
 ```
 
@@ -157,21 +172,27 @@ When subscribed events occur:
 ```json
 {
   "type": "event",
-  "event_type": "command_executed",
+  "event_type": "property_changed",
   "data": {
-    "command": "click",
-    "params": {"target": "@name:btn"},
-    "success": true,
-    "duration_ms": 15
+    "path": "mainWindow/centralWidget/nameEdit",
+    "objectName": "nameEdit",
+    "class": "QLineEdit",
+    "property": "text",
+    "old": "",
+    "new": "John"
   }
 }
 ```
 
 ### Available Event Types
 
-| Event Type | Description |
-|------------|-------------|
-| `command_executed` | After each command or transaction completes |
+| Event Type | Description | Data Fields |
+|------------|-------------|-------------|
+| `widget_created` | Widget added to tree | `path`, `objectName`, `class`, `parentPath` |
+| `widget_destroyed` | Widget removed from tree | `path`, `objectName`, `class` |
+| `property_changed` | Property value changed | `path`, `objectName`, `class`, `property`, `old`, `new` |
+| `focus_changed` | Focus moved between widgets | `oldPath`, `newPath`, `oldObjectName`, `newObjectName` |
+| `command_executed` | After each command or transaction | `command`, `params`, `success`, `duration_ms` |
 
 ### Unsubscribe
 
@@ -179,7 +200,7 @@ When subscribed events occur:
 {
   "type": "unsubscribe",
   "id": "unsub-1",
-  "event_type": "command_executed"
+  "event_type": "property_changed"
 }
 ```
 

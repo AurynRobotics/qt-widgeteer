@@ -449,8 +449,28 @@ class WidgeteerClient:
 
     # ========== Event Subscriptions ==========
 
-    async def subscribe(self, event_type: str, handler: Callable[[Event], None]) -> Response:
-        """Subscribe to an event type."""
+    async def subscribe(
+        self,
+        event_type: str,
+        handler: Callable[[Event], None],
+        filter: dict | None = None,
+    ) -> Response:
+        """Subscribe to an event type with optional filtering.
+
+        Args:
+            event_type: One of "command_executed", "widget_created",
+                "widget_destroyed", "property_changed", "focus_changed".
+            handler: Callback invoked for each matching event.
+            filter: Optional filter dict. For ``property_changed`` both
+                ``target`` and ``property`` are required. Other event types
+                accept an optional ``target`` to restrict the scope.
+
+        Example::
+
+            await client.subscribe("property_changed", on_change,
+                                   filter={"target": "@name:edit", "property": "text"})
+            await client.subscribe("focus_changed", on_focus)
+        """
         if event_type not in self._event_handlers:
             self._event_handlers[event_type] = []
         self._event_handlers[event_type].append(handler)
@@ -460,6 +480,8 @@ class WidgeteerClient:
             "id": str(uuid.uuid4()),
             "event_type": event_type,
         }
+        if filter:
+            message["filter"] = filter
         result = await self._send_and_wait(message)
 
         error_obj = result.get("error", {}) if not result.get("success") else {}
@@ -1110,6 +1132,17 @@ class SyncWidgeteerClient:
 
     def quit(self) -> Response:
         return self._run(self._client.quit())
+
+    def subscribe(
+        self,
+        event_type: str,
+        handler: Callable[[Event], None],
+        filter: dict | None = None,
+    ) -> Response:
+        return self._run(self._client.subscribe(event_type, handler, filter))
+
+    def unsubscribe(self, event_type: str | None = None) -> Response:
+        return self._run(self._client.unsubscribe(event_type))
 
     def start_recording(self) -> Response:
         return self._run(self._client.start_recording())
