@@ -467,8 +467,8 @@ private slots:
 
     // Use index notation with object name
     auto result = finder.find("testWindow/noNameContainer/NoName1[0]");
-    // Should work if there's an objectName match or fail
-    // Actually this tests the objectName branch of index notation
+    QCOMPARE(result.widget, nullptr);
+    QVERIFY(!result.error.isEmpty());
   }
 
   // === Cache with deleted widget tests ===

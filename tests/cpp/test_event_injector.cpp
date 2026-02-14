@@ -4,6 +4,7 @@
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QPointer>
 #include <QScrollArea>
 #include <QSignalSpy>
 #include <QSlider>
@@ -501,9 +502,15 @@ private slots:
     // Focus on widget in second window - should trigger window activation code
     auto result = injector.setFocus(editInSecond);
 
-    // May or may not succeed depending on window manager in offscreen mode,
-    // but we're exercising the code path
+    // In offscreen/headless mode focus activation can fail, but the function
+    // should either succeed cleanly or return a concrete error.
     QVERIFY(result.success || !result.error.isEmpty());
+    if (result.success) {
+      QVERIFY(editInSecond->hasFocus());
+    } else {
+      QCOMPARE(result.error, QString("Failed to set focus on widget"));
+      QVERIFY(!editInSecond->hasFocus());
+    }
 
     delete secondWindow;
   }
@@ -512,23 +519,22 @@ private slots:
     EventInjector injector;
 
     // Create a button that we'll delete after scheduling click
-    auto* tempButton = new QPushButton("Temp", testWindow_);
-    tempButton->setObjectName("tempButton");
-    tempButton->show();
+    auto* tempButtonRaw = new QPushButton("Temp", testWindow_);
+    QPointer<QPushButton> tempButton = tempButtonRaw;
+    tempButtonRaw->setObjectName("tempButton");
+    tempButtonRaw->show();
     QTest::qWait(20);
 
     // Schedule the click
-    auto result = injector.click(tempButton);
+    auto result = injector.click(tempButtonRaw);
     QVERIFY(result.success);
 
     // Delete the button BEFORE the timer fires (timer is 10ms)
-    delete tempButton;
+    delete tempButtonRaw;
+    QVERIFY(tempButton.isNull());
 
-    // Wait for timer to fire - should gracefully handle deleted widget
+    // Wait for timer to fire; process should remain stable.
     QTest::qWait(50);
-
-    // If we got here without crashing, the test passed
-    QVERIFY(true);
   }
 
 private:

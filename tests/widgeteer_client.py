@@ -215,6 +215,12 @@ class WidgeteerClient:
         self._event_handlers: dict[str, list[Callable]] = {}
         self._receive_task = None
 
+    def _fail_pending(self, exc: Exception) -> None:
+        """Fail all pending command futures immediately."""
+        for future in self._pending.values():
+            if not future.done():
+                future.set_exception(exc)
+
     @property
     def ws_url(self) -> str:
         """Build WebSocket URL with optional token."""
@@ -230,6 +236,7 @@ class WidgeteerClient:
 
     async def disconnect(self) -> None:
         """Disconnect from the server."""
+        self._fail_pending(ConnectionError("Disconnected from server"))
         if self._receive_task:
             self._receive_task.cancel()
             try:
@@ -251,7 +258,9 @@ class WidgeteerClient:
                     # Match response to pending request
                     msg_id = data.get("id")
                     if msg_id in self._pending:
-                        self._pending[msg_id].set_result(data)
+                        future = self._pending[msg_id]
+                        if not future.done():
+                            future.set_result(data)
 
                 elif msg_type == "event":
                     # Dispatch to event handlers
@@ -267,8 +276,9 @@ class WidgeteerClient:
                             except Exception as e:
                                 print(f"Event handler error: {e}")
         except asyncio.CancelledError:
-            pass
+            self._fail_pending(ConnectionError("Connection closed"))
         except Exception as e:
+            self._fail_pending(ConnectionError(f"Receive loop error: {e}"))
             print(f"Receive loop error: {e}")
 
     async def _send_and_wait(self, message: dict, timeout: float = 30.0) -> dict:
@@ -439,8 +449,28 @@ class WidgeteerClient:
 
     # ========== Event Subscriptions ==========
 
-    async def subscribe(self, event_type: str, handler: Callable[[Event], None]) -> Response:
-        """Subscribe to an event type."""
+    async def subscribe(
+        self,
+        event_type: str,
+        handler: Callable[[Event], None],
+        filter: dict | None = None,
+    ) -> Response:
+        """Subscribe to an event type with optional filtering.
+
+        Args:
+            event_type: One of "command_executed", "widget_created",
+                "widget_destroyed", "property_changed", "focus_changed".
+            handler: Callback invoked for each matching event.
+            filter: Optional filter dict. For ``property_changed`` both
+                ``target`` and ``property`` are required. Other event types
+                accept an optional ``target`` to restrict the scope.
+
+        Example::
+
+            await client.subscribe("property_changed", on_change,
+                                   filter={"target": "@name:edit", "property": "text"})
+            await client.subscribe("focus_changed", on_focus)
+        """
         if event_type not in self._event_handlers:
             self._event_handlers[event_type] = []
         self._event_handlers[event_type].append(handler)
@@ -450,6 +480,8 @@ class WidgeteerClient:
             "id": str(uuid.uuid4()),
             "event_type": event_type,
         }
+        if filter:
+            message["filter"] = filter
         result = await self._send_and_wait(message)
 
         error_obj = result.get("error", {}) if not result.get("success") else {}
@@ -1100,6 +1132,17 @@ class SyncWidgeteerClient:
 
     def quit(self) -> Response:
         return self._run(self._client.quit())
+
+    def subscribe(
+        self,
+        event_type: str,
+        handler: Callable[[Event], None],
+        filter: dict | None = None,
+    ) -> Response:
+        return self._run(self._client.subscribe(event_type, handler, filter))
+
+    def unsubscribe(self, event_type: str | None = None) -> Response:
+        return self._run(self._client.unsubscribe(event_type))
 
     def start_recording(self) -> Response:
         return self._run(self._client.start_recording())

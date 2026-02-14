@@ -15,6 +15,11 @@ class WIDGETEER_EXPORT EventBroadcaster : public QObject {
   Q_OBJECT
 
 public:
+  struct SubscriptionEntry {
+    QString eventType;
+    QJsonObject filter;
+  };
+
   explicit EventBroadcaster(QObject* parent = nullptr);
 
   // Enable/disable broadcasting
@@ -22,7 +27,8 @@ public:
   bool isEnabled() const;
 
   // Subscription management
-  void subscribe(const QString& clientId, const QString& eventType);
+  void subscribe(const QString& clientId, const QString& eventType,
+                 const QJsonObject& filter = QJsonObject());
   void unsubscribe(const QString& clientId, const QString& eventType);
   void unsubscribeAll(const QString& clientId);
   void removeClient(const QString& clientId);
@@ -31,6 +37,7 @@ public:
   bool hasSubscribers(const QString& eventType) const;
   QStringList subscribersFor(const QString& eventType) const;
   QStringList clientSubscriptions(const QString& clientId) const;
+  QList<QJsonObject> filtersForEvent(const QString& eventType) const;
 
   // Available event types
   static QStringList availableEventTypes();
@@ -45,10 +52,13 @@ public slots:
   void emitEvent(const QString& eventType, const QJsonObject& data);
 
 private:
+  bool matchesFilter(const QString& eventType, const QJsonObject& data,
+                     const QJsonObject& filter) const;
+
   bool enabled_ = false;
 
-  // clientId -> set of event types they're subscribed to
-  QHash<QString, QSet<QString>> clientSubscriptions_;
+  // clientId -> subscription entries
+  QHash<QString, QList<SubscriptionEntry>> clientSubscriptions_;
 
   // eventType -> set of clientIds subscribed to it
   QHash<QString, QSet<QString>> eventSubscribers_;
